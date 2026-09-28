@@ -1,0 +1,53 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  Publish floating v1 tag                                          ║
+# ║                                                                    ║
+# ║  Generated customer pipelines pin the reusable workflows at @v1   ║
+# ║  (see staged-workflow.builder.ts in cicd-workflow-be). Historically║
+# ║  fixes landed on main but the v1 tag was forgotten, so consumers   ║
+# ║  kept running stale workflows. This job force-moves v1 to the      ║
+# ║  latest main on every merge, so @v1 can never drift behind again.  ║
+# ╚══════════════════════════════════════════════════════════════════╝
+# Contract: docs/workflows/publish-v1-tag.md
+name: "Publish v1 tag"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# Never let two retag runs race; the newest main wins.
+concurrency:
+  group: publish-v1-tag
+  cancel-in-progress: true
+
+jobs:
+  # Workflow Validation triggers on pull_request only, so a direct push to main
+  # moved v1 with no check of any kind run against the commit every customer
+  # pipeline was about to pin to. Calling it here covers that path without
+  # running the suite twice, and a failing commit leaves v1 on the last good
+  # one — the safe direction to fail.
+  validate:
+    name: "Validate before tagging"
+    uses: ./.github/workflows/workflow-validation.yml
+
+  retag:
+    name: "Move v1 to current main"
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Force-move v1 tag to this commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f v1 "${GITHUB_SHA}"
+          git push -f origin "refs/tags/v1"
+          echo "✅ v1 now points at ${GITHUB_SHA}"

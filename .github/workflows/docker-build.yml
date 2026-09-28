@@ -1,0 +1,305 @@
+# Contract: docs/workflows/docker-build.md
+name: "Reusable: Docker Build & Registry"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+        description: "Project directory containing Dockerfile"
+      image-name:
+        required: true
+        type: string
+        description: "Docker image name (e.g. bayanihub-api)"
+      dockerfile-path:
+        required: false
+        type: string
+        default: "Dockerfile"
+        description: "Path to Dockerfile relative to working directory"
+      push-image:
+        required: false
+        type: boolean
+        default: true
+        description: "Push image to GHCR"
+      scan-vulnerabilities:
+        required: false
+        type: boolean
+        default: true
+        description: "Run container vulnerability scan"
+      fail-on-vulnerabilities:
+        required: false
+        type: boolean
+        default: true
+        description: "Fail job when HIGH/CRITICAL vulnerabilities are found"
+      build-args:
+        required: false
+        type: string
+        default: ""
+        description: "Docker build arguments (key=value pairs, newline separated)"
+      generate-sbom:
+        required: false
+        type: boolean
+        default: true
+        description: "Generate SBOM attestation during build"
+      generate-provenance:
+        required: false
+        type: boolean
+        default: true
+        description: "Generate provenance attestation during build"
+      release-tag:
+        required: false
+        type: string
+        default: ""
+        description: "Optional explicit release tag to add (e.g. main-v2026.02.21.123-abc1234)"
+      checkout-ref:
+        required: false
+        type: string
+        default: ""
+        description: "Optional git ref/SHA to checkout, used by workflow_run chains"
+      pipeline-branch:
+        required: false
+        type: string
+        default: ""
+        description: "The pipeline branch this image belongs to (dev|uat|main), from pipeline-context. When set, the image is tagged with that branch and the built commit instead of the git context, and no `latest` is written"
+    outputs:
+      image-tag:
+        description: "Full image tag that was built"
+        value: ${{ jobs.docker-build.outputs.image-tag }}
+      image-digest:
+        description: "Image digest"
+        value: ${{ jobs.docker-build.outputs.digest }}
+      scan-result:
+        description: "Vulnerability scan result"
+        value: ${{ jobs.vulnerability-scan.outputs.result || jobs.docker-build.outputs.local-scan-result }}
+      image-repo:
+        description: "Registry repository the image was pushed to, without a tag. A caller that must name this exact build appends its own tag or digest"
+        value: ${{ jobs.docker-build.outputs.image-repo }}
+
+permissions:
+  contents: read
+
+jobs:
+  docker-build:
+    name: "Docker Build & Push"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build-push.outputs.digest }}
+      image-repo: ${{ steps.coords.outputs.image_repo }}
+      local-scan-result: ${{ steps.local-scan.outcome }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Normalize image coordinates
+        id: coords
+        env:
+          OWNER: ${{ github.repository_owner }}
+          IMAGE: ${{ inputs.image-name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          OWNER_LC=$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_LC=$(echo "${IMAGE}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_REPO="ghcr.io/${OWNER_LC}/${IMAGE_LC}"
+          CACHE_SCOPE=$(echo "${REPOSITORY}-${IMAGE_LC}" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9._-]#-#g')
+
+          {
+            echo "owner_lc=${OWNER_LC}"
+            echo "image_lc=${IMAGE_LC}"
+            echo "image_repo=${IMAGE_REPO}"
+            echo "cache_scope=${CACHE_SCOPE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A workflow_run chain reports the DEFAULT branch in the git context, not
+      # the branch that was pushed: `type=ref,event=branch` then writes `main`
+      # and `latest` onto a uat build, and `type=sha` stamps the default
+      # branch's head rather than the commit that was actually checked out and
+      # built. Nothing downstream can then ask for "the uat image".
+      #
+      # Callers that pass pipeline-branch get tags derived from the values they
+      # were given. Callers that do not are untouched, which keeps the existing
+      # push-triggered templates and every generated pipeline on their current
+      # tags.
+      - name: Resolve tag policy
+        id: tags
+        env:
+          PIPELINE_BRANCH: ${{ inputs.pipeline-branch }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          CHECKOUT_REF: ${{ inputs.checkout-ref }}
+          CONTEXT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # checkout-ref may be a branch name or a tag; only a full SHA names
+          # the commit this image actually contains.
+          built_sha="${CHECKOUT_REF}"
+          if ! printf '%s' "${built_sha}" | grep -Eq '^[0-9a-f]{40}$'; then
+            built_sha="${CONTEXT_SHA}"
+          fi
+
+          {
+            echo "rules<<TAG_RULES"
+            if [ -n "${PIPELINE_BRANCH}" ]; then
+              echo "type=raw,value=${PIPELINE_BRANCH}"
+              echo "type=raw,value=sha-${built_sha}"
+            else
+              echo "type=sha,format=long,prefix=sha-"
+              echo "type=ref,event=branch"
+              echo "type=ref,event=pr"
+              echo "type=semver,pattern={{version}}"
+              echo "type=raw,value=latest,enable={{is_default_branch}}"
+            fi
+            if [ -n "${RELEASE_TAG}" ]; then
+              echo "type=raw,value=${RELEASE_TAG}"
+            fi
+            echo "TAG_RULES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.coords.outputs.image_repo }}
+          tags: ${{ steps.tags.outputs.rules }}
+
+      - name: Build and Push
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ inputs.working-directory }}
+          file: ./${{ inputs.working-directory }}/${{ inputs.dockerfile-path }}
+          push: ${{ inputs.push-image }}
+          load: ${{ !inputs.push-image }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ steps.coords.outputs.cache_scope }}
+          # ignore-error: the build cache is an optimisation, and failing to
+          # SAVE it must not fail a build whose image already pushed. Observed
+          # on real runs as `error writing layer blob: failed to reserve cache`
+          # after every layer had been pushed to GHCR: the image was published
+          # and usable, the job went red, and the deploy that needed it was
+          # skipped. A cache that cannot be written only costs time next run.
+          cache-to: type=gha,mode=max,scope=${{ steps.coords.outputs.cache_scope }},ignore-error=true
+          build-args: ${{ inputs.build-args }}
+          sbom: ${{ inputs.push-image && inputs.generate-sbom }}
+          provenance: ${{ inputs.push-image && inputs.generate-provenance }}
+
+      - name: Image Summary
+        run: |
+          echo "Image Tags:"
+          echo "${{ steps.meta.outputs.tags }}"
+          echo ""
+          echo "Git SHA: ${{ github.sha }}"
+
+      # When not pushing, scan the locally-loaded image in this job
+      # (the separate vulnerability-scan job can only pull from GHCR)
+      - name: Local Vulnerability Scan
+        id: local-scan
+        if: ${{ !inputs.push-image && inputs.scan-vulnerabilities }}
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: "image"
+          image-ref: "${{ steps.coords.outputs.image_repo }}:sha-${{ github.sha }}"
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          scanners: "vuln"
+          ignore-unfixed: true
+          exit-code: ${{ inputs.fail-on-vulnerabilities && '1' || '0' }}
+
+  vulnerability-scan:
+    name: "Container Security Scan"
+    if: ${{ inputs.scan-vulnerabilities && inputs.push-image }}
+    needs: docker-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    outputs:
+      result: ${{ steps.scan.outcome }}
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image reference
+        id: image-ref
+        env:
+          IMAGE_REPO: ${{ needs.docker-build.outputs.image-repo }}
+          DIGEST: ${{ needs.docker-build.outputs.digest }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          if [ -n "${DIGEST}" ]; then
+            echo "image_ref=${IMAGE_REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${RELEASE_TAG}"
+            if [ -z "${TAG}" ]; then
+              TAG="sha-${GIT_SHA}"
+            fi
+            echo "image_ref=${IMAGE_REPO}:${TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Trivy Vulnerability Scanner
+        id: scan
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: ${{ steps.image-ref.outputs.image_ref }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          limit-severities-for-sarif: true
+          scanners: "vuln"
+          ignore-unfixed: true
+          exit-code: ${{ inputs.fail-on-vulnerabilities && '1' || '0' }}
+
+      - name: Check SARIF file exists
+        if: always()
+        id: sarif-check
+        run: |
+          if [ -f "trivy-results.sarif" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Warning: trivy-results.sarif was not generated."
+          fi
+
+      - name: Upload Trivy Scan Results
+        if: always() && steps.sarif-check.outputs.exists == 'true'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Upload Scan Artifact
+        if: always() && steps.sarif-check.outputs.exists == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.image-name }}-security-scan
+          path: trivy-results.sarif
+          retention-days: 30
+
+

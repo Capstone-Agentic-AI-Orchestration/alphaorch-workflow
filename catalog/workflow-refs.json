@@ -1,0 +1,31 @@
+{
+  "currentStable": "v1",
+  "repository": "Capstone-Agentic-AI-Orchestration/alphaorch-workflow",
+  "nodeVersions": [
+    {
+      "value": "20",
+      "label": "Node 20 LTS (Iron)"
+    },
+    {
+      "value": "22",
+      "label": "Node 22 LTS (Jod)"
+    },
+    {
+      "value": "24",
+      "label": "Node 24 LTS (Noble)"
+    }
+  ],
+  "workflows": {
+    "nextjsService": ".github/workflows/service-nextjs.yml",
+    "nestjsService": ".github/workflows/service-nestjs.yml",
+    "nodeService": ".github/workflows/service-node.yml",
+    "reactService": ".github/workflows/service-react.yml",
+    "reactNativeService": ".github/workflows/service-react-native.yml",
+    "expoService": ".github/workflows/service-expo.yml",
+    "renderDeploy": ".github/workflows/render-deploy.yml",
+    "vercelDeploy": ".github/workflows/vercel-deploy.yml"
+  },
+  "actions": {
+    "discoverService": ".github/actions/discover-service"
+  }
+}

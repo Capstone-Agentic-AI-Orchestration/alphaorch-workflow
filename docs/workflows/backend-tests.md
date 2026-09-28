@@ -1,0 +1,82 @@
+# backend-tests.yml Contract
+
+This Markdown file is documentation only. GitHub Actions does not execute this file.
+
+The executable reusable workflow is:
+
+```text
+alphaorch-workflow/.github/workflows/backend-tests.yml
+```
+
+## Role
+Primitive reusable workflow.
+
+## Purpose
+Runs backend unit tests and optional integration tests with coverage.
+
+## Public Contract
+- Source workflow: `.github/workflows/backend-tests.yml`
+- Trigger: `workflow_call`
+- Required inputs: `system-name`
+- Optional inputs: `working-directory`, `backend-stack`, `node-version`, `test-command`, `integration-test-command`, `coverage-threshold`, `coverage-report-path`, `coverage-format`, `enforce-coverage`, `run-parallel`, `upload-artifact`, `checkout-ref`
+- Secrets: none
+- Outputs: `unit-test-result`, `integration-test-result`, `coverage-percent`
+
+## Usage
+Call this from a real GitHub Actions workflow in a consumer repository, such as `.github/workflows/backend-ci.yml`.
+
+```yaml
+name: Backend CI
+
+on:
+  push:
+    branches: [test, uat, prod]
+  pull_request:
+    branches: [test, uat, prod]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    uses: Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/workflows/backend-tests.yml@v1
+    with:
+      working-directory: .
+      system-name: backend
+      backend-stack: nestjs
+      node-version: 24
+      test-command: npm test
+      run-parallel: false
+```
+
+Ordering belongs in the caller workflow with `needs`. For example, a Docker build should wait for backend tests like this:
+
+```yaml
+jobs:
+  unit-tests:
+    uses: Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/workflows/backend-tests.yml@v1
+    with:
+      system-name: backend
+
+  docker:
+    needs: [unit-tests]
+    uses: Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/workflows/docker-build.yml@v1
+    with:
+      working-directory: .
+      image-name: backend
+```
+
+## Notes
+- This workflow is safe to run standalone.
+- It does not call lint, security, Docker, deploy, or promotion internally.
+- If `integration-test-command` is empty, integration tests are skipped.
+- If `enforce-coverage` is `true`, missing or below-threshold coverage fails the workflow.
+- If `enforce-coverage` is `false`, missing coverage is reported as `unknown` and does not fail the workflow by itself.
+- Use `checkout-ref` when a `workflow_run` chain must test the original triggering commit instead of the default branch commit.
+- Coverage is read by the `coverage-gate` composite action, which understands
+  `istanbul-summary`, `cobertura`, `lcov` and `jacoco`. The default is
+  `istanbul-summary`, so JavaScript callers need change nothing. Set
+  `coverage-format` and `coverage-report-path` together when a runner emits
+  something else — Coverlet emits Cobertura, for instance.
+- A missing report and a below-threshold percentage fail with different
+  messages. The first means the test command is not emitting the format this
+  gate expects, which is usually a reporter that was never configured; the
+  second means the code is under-tested. They need different fixes.

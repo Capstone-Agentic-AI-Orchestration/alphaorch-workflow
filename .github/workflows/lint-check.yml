@@ -1,0 +1,158 @@
+# Contract: docs/workflows/lint-check.md
+name: "Reusable: Lint & Code Style"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+        description: "Project directory"
+      system-name:
+        required: true
+        type: string
+        description: "System name for display"
+      node-version:
+        required: false
+        type: number
+        default: 24
+        description: "Node.js version"
+      lint-command:
+        required: false
+        type: string
+        default: "npx eslint . --max-warnings=0"
+        description: "Lint command to run"
+      format-check-command:
+        required: false
+        type: string
+        default: ""
+        description: "Format check command (e.g. npx prettier --check .)"
+      fail-on-warning:
+        required: false
+        type: boolean
+        default: false
+        description: "Fail on ESLint warnings"
+      checkout-ref:
+        required: false
+        type: string
+        default: ""
+        description: "Optional git ref/SHA to checkout, used by workflow_run chains"
+    outputs:
+      lint-result:
+        description: "Lint pass/fail"
+        value: ${{ jobs.lint-check.outputs.result }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint-check:
+    name: "Lint & Style Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.lint.outcome }}
+    defaults:
+      run:
+        working-directory: ./${{ inputs.working-directory }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Setup Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json') != '' && 'npm' || '' }}
+          cache-dependency-path: |
+            **/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          # `npm ci` is the right command and a hard requirement on it is not.
+          #
+          # It refuses to run without a lockfile:
+          #
+          #   npm error `npm ci` can only install with an existing
+          #   package-lock.json or npm-shrinkwrap.json
+          #
+          # A freshly scaffolded project has no lockfile - it is produced by
+          # the first `npm install` the developer runs - so every job that
+          # installed this way died on its first step before touching the
+          # code. Three of them did, on every run, for a project whose tests
+          # were fine.
+          #
+          # Falling back keeps the pipeline usable on day one, and the warning
+          # keeps the fallback from becoming the norm: an install without a
+          # lockfile resolves whatever is newest that morning, so two runs of
+          # the same commit can test different dependency trees.
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci --ignore-scripts
+          else
+            echo "::warning::No package-lock.json, so dependencies were resolved with npm install and this run is not reproducible. Commit a lockfile."
+            npm install --no-audit --no-fund --ignore-scripts
+          fi
+
+      # Turn ESLint's own output into GitHub annotations.
+      #
+      # An annotation carries a file, a line and a message, which is what the
+      # platform reports back as the actual error. Without a matcher a lint
+      # failure is only an exit code, and the product can say no more than
+      # that the lint job failed.
+      #
+      # Written to the runner temp rather than read from this repository: a
+      # reusable workflow runs against the CALLER's checkout, so a path under
+      # the central repo does not exist here.
+      #
+      # Harmless when the lint command is not ESLint - the patterns simply do
+      # not match, and nothing is annotated.
+      - name: Register ESLint Problem Matcher
+        run: |
+          cat > "${RUNNER_TEMP}/eslint-stylish.json" <<'MATCHER'
+          {
+            "problemMatcher": [
+              {
+                "owner": "alphaorch-eslint-stylish",
+                "pattern": [
+                  {
+                    "regexp": "^([^\\s].*)$",
+                    "file": 1
+                  },
+                  {
+                    "regexp": "^\\s+(\\d+):(\\d+)\\s+(error|warning)\\s+(.*?)\\s{2,}(\\S+)\\s*$",
+                    "line": 1,
+                    "column": 2,
+                    "severity": 3,
+                    "message": 4,
+                    "code": 5,
+                    "loop": true
+                  }
+                ]
+              }
+            ]
+          }
+          MATCHER
+          echo "::add-matcher::${RUNNER_TEMP}/eslint-stylish.json"
+
+      - name: Run Linter
+        id: lint
+        run: |
+          echo "Running lint checks..."
+          ${{ inputs.lint-command }}
+          echo "Lint checks passed"
+
+      - name: Deregister ESLint Problem Matcher
+        if: always()
+        run: echo "::remove-matcher owner=alphaorch-eslint-stylish::"
+
+      - name: Check Code Formatting
+        if: ${{ inputs.format-check-command != '' }}
+        run: |
+          echo "Checking code formatting..."
+          ${{ inputs.format-check-command }}
+          echo "Formatting is consistent"
+
+

@@ -1,0 +1,363 @@
+# Contract: docs/workflows/dotnet-test.md
+name: "Reusable: .NET Unit Tests"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+        description: "Project directory containing the solution or test projects"
+      system-name:
+        required: true
+        type: string
+        description: "System name for artifacts/display (e.g. StPeter-API)"
+      dotnet-version:
+        required: false
+        type: string
+        default: "10.0.x"
+        description: ".NET SDK version. 10.0 is the active LTS; 8.0 and 9.0 leave support in November 2026"
+      solution-path:
+        required: false
+        type: string
+        default: ""
+        description: "Solution or project to build and test, relative to working-directory. Empty lets the SDK discover it"
+      configuration:
+        required: false
+        type: string
+        default: "Release"
+        description: "Build configuration (Release|Debug)"
+      test-arguments:
+        required: false
+        type: string
+        default: ""
+        description: "Extra arguments appended to dotnet test (e.g. --filter Category!=Integration)"
+      coverage-threshold:
+        required: false
+        type: number
+        default: 80
+        description: "Minimum line coverage percentage"
+      enforce-coverage:
+        required: false
+        type: boolean
+        default: true
+        description: "Fail when coverage is below threshold or no report was produced"
+      reportgenerator-version:
+        required: false
+        type: string
+        default: "5.*"
+        description: "Version range for the ReportGenerator global tool used to merge coverage"
+      upload-artifact:
+        required: false
+        type: boolean
+        default: true
+        description: "Upload the merged coverage report"
+      checkout-ref:
+        required: false
+        type: string
+        default: ""
+        description: "Optional git ref/SHA to checkout, used by workflow_run chains"
+    outputs:
+      unit-test-result:
+        description: "Unit test pass/fail"
+        value: ${{ jobs.dotnet-unit-tests.outputs.result }}
+      coverage-percent:
+        description: "Code coverage percentage"
+        value: ${{ jobs.dotnet-unit-tests.outputs.coverage }}
+      tests-total:
+        description: "Total tests executed, 0 when no report was produced"
+        value: ${{ jobs.dotnet-unit-tests.outputs.tests-total }}
+      tests-passed:
+        description: "Tests that passed"
+        value: ${{ jobs.dotnet-unit-tests.outputs.tests-passed }}
+      tests-failed:
+        description: "Tests that failed"
+        value: ${{ jobs.dotnet-unit-tests.outputs.tests-failed }}
+      tests-failures:
+        description: "JSON array of {name,message} for the failed tests, capped"
+        value: ${{ jobs.dotnet-unit-tests.outputs.tests-failures }}
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet-unit-tests:
+    name: ".NET Unit Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.test-run.outcome }}
+      tests-total: ${{ steps.test-summary.outputs.tests-total }}
+      tests-passed: ${{ steps.test-summary.outputs.tests-passed }}
+      tests-failed: ${{ steps.test-summary.outputs.tests-failed }}
+      tests-failures: ${{ steps.test-summary.outputs.tests-failures }}
+      coverage: ${{ steps.coverage-check.outputs.coverage }}
+    defaults:
+      run:
+        working-directory: ./${{ inputs.working-directory }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Setup .NET ${{ inputs.dotnet-version }}
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      # Keyed on the project files rather than a lock file, because
+      # packages.lock.json is opt-in and most solutions do not have one. A key
+      # that never resolves would silently disable the cache instead of failing.
+      - name: Cache NuGet Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.fsproj', '**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      # solution-path is optional, so it is passed as an array element that is
+      # simply absent when empty. Interpolating an empty string would leave a
+      # bare "" argument, which the SDK reads as a project named "".
+      - name: Restore Dependencies
+        env:
+          SOLUTION_PATH: ${{ inputs.solution-path }}
+        run: |
+          set -euo pipefail
+
+          target=()
+          if [ -n "${SOLUTION_PATH}" ]; then
+            target+=("${SOLUTION_PATH}")
+          fi
+
+          dotnet restore "${target[@]}"
+
+      - name: Build
+        env:
+          SOLUTION_PATH: ${{ inputs.solution-path }}
+          CONFIGURATION: ${{ inputs.configuration }}
+        run: |
+          set -euo pipefail
+
+          target=()
+          if [ -n "${SOLUTION_PATH}" ]; then
+            target+=("${SOLUTION_PATH}")
+          fi
+
+          dotnet build "${target[@]}" --configuration "${CONFIGURATION}" --no-restore
+
+      # --no-build is deliberate: it guarantees the assemblies under test are the
+      # ones the build step above produced. Letting dotnet test rebuild would
+      # hide a build that only succeeds with different implicit arguments.
+      - name: Run Unit Tests
+        id: test-run
+        env:
+          SOLUTION_PATH: ${{ inputs.solution-path }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          TEST_ARGUMENTS: ${{ inputs.test-arguments }}
+        run: |
+          set -euo pipefail
+
+          target=()
+          if [ -n "${SOLUTION_PATH}" ]; then
+            target+=("${SOLUTION_PATH}")
+          fi
+
+          # Split on whitespace deliberately: the caller passes a command-line
+          # fragment such as "--filter Category!=Integration", which has to reach
+          # dotnet as separate arguments rather than one quoted string.
+          extra=()
+          if [ -n "${TEST_ARGUMENTS}" ]; then
+            read -ra extra <<< "${TEST_ARGUMENTS}"
+          fi
+
+          dotnet test "${target[@]}" \
+            --configuration "${CONFIGURATION}" \
+            --no-build \
+            --logger "trx;LogFileName=test-results.trx" \
+            --results-directory ./TestResults \
+            --collect:"XPlat Code Coverage" \
+            "${extra[@]}"
+
+      # The FAILING TEST NAMES, not just a pass/fail flag.
+      #
+      # Without this the platform could only say "the quality stage failed" and
+      # leave someone to open the log and read it. dotnet test already writes a
+      # TRX for every test project, so the names and assertion messages are
+      # sitting there — they just were not being reported back.
+      #
+      # Runs on failure too, which is the only time it matters.
+      - name: Summarise Test Results
+        id: test-summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          python3 - >> "$GITHUB_OUTPUT" <<'PYEOF'
+          import glob, hashlib, json
+          import xml.etree.ElementTree as ET
+
+          total = passed = failed = 0
+          failures = []
+          seen = set()
+
+          # Recursive, because a solution puts one TRX per test project under
+          # its own directory. Deduplicated by content hash: the trx logger
+          # stages byte-identical copies, and counting those would double every
+          # number for a single-project solution.
+          for path in sorted(glob.glob("TestResults/**/*.trx", recursive=True)):
+              try:
+                  with open(path, "rb") as handle:
+                      digest = hashlib.sha256(handle.read()).hexdigest()
+              except OSError:
+                  continue
+              if digest in seen:
+                  continue
+              seen.add(digest)
+
+              try:
+                  root = ET.parse(path).getroot()
+              except ET.ParseError:
+                  # A truncated report must not fail the summary; the job is
+                  # already reporting whatever the test step concluded.
+                  continue
+
+              # Tags carry the VSTest namespace, so match on the local name.
+              for el in root.iter():
+                  tag = el.tag.rsplit("}", 1)[-1]
+                  if tag == "Counters":
+                      total += int(el.get("total") or 0)
+                      passed += int(el.get("passed") or 0)
+                      failed += int(el.get("failed") or 0)
+                  elif tag == "UnitTestResult" and el.get("outcome") == "Failed":
+                      message = ""
+                      for child in el.iter():
+                          if child.tag.rsplit("}", 1)[-1] == "Message" and child.text:
+                              # Collapse whitespace: a newline here would break
+                              # the GITHUB_OUTPUT key=value contract.
+                              message = " ".join(child.text.split())[:300]
+                              break
+                      failures.append(
+                          {"name": el.get("testName") or "unknown", "message": message}
+                      )
+
+          print(f"tests-total={total}")
+          print(f"tests-passed={passed}")
+          print(f"tests-failed={failed}")
+          print("tests-failures=" + json.dumps(failures[:20], separators=(",", ":")))
+          PYEOF
+
+      # dotnet test writes each test project's report to its own GUID-named
+      # directory, so there is no fixed path to hand the coverage gate, and a
+      # solution with unit and integration test projects produces several. Both
+      # are merged into one report: picking the first would silently grade the
+      # whole solution on one project's coverage.
+      - name: Merge Coverage Reports
+        id: merge-coverage
+        if: always()
+        env:
+          ENFORCE_COVERAGE: ${{ inputs.enforce-coverage }}
+          REPORTGENERATOR_VERSION: ${{ inputs.reportgenerator-version }}
+          TEST_OUTCOME: ${{ steps.test-run.outcome }}
+        run: |
+          set -euo pipefail
+
+          # Depth 2 is exactly TestResults/<guid>/coverage.cobertura.xml, one per
+          # test project. The trx logger also stages a byte-identical copy of the
+          # last report under TestResults/<user>_<machine>_<time>/In/<machine>/,
+          # which an unrestricted find would pick up and weight twice.
+          reports=()
+          if [ -d ./TestResults ]; then
+            mapfile -t reports < <(find ./TestResults -mindepth 2 -maxdepth 2 -name 'coverage.cobertura.xml' -type f | sort)
+          fi
+          echo "Found ${#reports[@]} coverage report(s)."
+
+          if [ "${#reports[@]}" -eq 0 ]; then
+            # This step runs on failure too, so it must not diagnose a build or
+            # test failure as a coverage problem. When the tests did not pass
+            # there is nothing to explain here and the job is already failing;
+            # naming the collector then would send people to the wrong fix.
+            if [ "${TEST_OUTCOME}" != "success" ]; then
+              echo "No coverage to merge because the tests did not pass. See the test step above."
+              exit 0
+            fi
+
+            # Tests passed and still produced nothing, which is almost always a
+            # missing collector: the XPlat collector ships in coverlet.collector,
+            # and a test project without that PackageReference runs green and
+            # reports no coverage at all.
+            message="Tests passed but produced no Cobertura report. Add a PackageReference to coverlet.collector in each test project."
+            if [ "${ENFORCE_COVERAGE}" = "true" ]; then
+              echo "::error::${message}"
+              exit 1
+            fi
+            echo "::warning::${message} Enforcement is disabled, so the job continues."
+            exit 0
+          fi
+
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version "${REPORTGENERATOR_VERSION}"
+          export PATH="${PATH}:${HOME}/.dotnet/tools"
+
+          joined="$(IFS=';'; printf '%s' "${reports[*]}")"
+
+          # Three formats from one merge, so no two of them can disagree about
+          # what was covered: Cobertura for the coverage gate, lcov for the
+          # JavaScript-side Sonar importer, and SonarQube.xml for the .NET one.
+          #
+          # SonarQube.xml is not a nicety. SonarScanner for .NET has no Cobertura
+          # importer, so the Cobertura file was being handed to the GENERIC
+          # importer, which expects a completely different schema and failed the
+          # whole analysis with "Error during parsing of the generic coverage
+          # report". ReportGenerator writes that generic schema directly.
+          #
+          # obj/ is excluded because it holds SOURCE-GENERATED code, and no
+          # hand-written source ever lives there. Grading a team on generated
+          # code is not a stricter gate, it is a broken one: a .NET 10 service
+          # referencing Microsoft.AspNetCore.OpenApi gets ~770 lines of XML
+          # comment support emitted into obj/, none of it reachable from a
+          # test, which measured 6.55% on a freshly scaffolded project and
+          # 96.77% once excluded. The generator cannot be turned off - the
+          # package ships it with no opt-out property - so the exclusion has to
+          # happen here. This is not specific to OpenAPI: EF compiled models,
+          # regex and DI generators all emit to the same place.
+          reportgenerator \
+            "-reports:${joined}" \
+            "-targetdir:coverage" \
+            "-filefilters:-**/obj/**" \
+            "-reporttypes:Cobertura;lcov;SonarQube"
+
+          # ReportGenerator names its Cobertura output Cobertura.xml; the gate is
+          # pointed at the lower-case name used by every other stack.
+          mv coverage/Cobertura.xml coverage/coverage.cobertura.xml
+          ls -la coverage
+
+      - name: Parse Coverage
+        id: coverage-check
+        if: always()
+        uses: Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/actions/coverage-gate@v1
+        with:
+          report-path: coverage/coverage.cobertura.xml
+          format: cobertura
+          threshold: ${{ inputs.coverage-threshold }}
+          enforce: ${{ inputs.enforce-coverage }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Upload Coverage Artifact
+        if: ${{ inputs.upload-artifact && always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.system-name }}-coverage
+          path: ${{ inputs.working-directory }}/coverage
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.system-name }}-unit-test-results
+          path: ${{ inputs.working-directory }}/TestResults/**/*.trx
+          retention-days: 7
+          if-no-files-found: ignore

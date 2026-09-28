@@ -1,0 +1,15 @@
+{
+    "name":  "Frontend React",
+    "description":  "Granular React frontend workflow using central reusable checks and Vercel deployment.",
+    "categories":  [
+                       "frontend",
+                       "react",
+                       "ci",
+                       "vercel"
+                   ],
+    "filePatterns":  [
+                         "vite.config.ts",
+                         "vite.config.js",
+                         "package.json"
+                     ]
+}

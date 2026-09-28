@@ -1,0 +1,248 @@
+# Contract: docs/workflows/backend-tests.md
+name: "Reusable: Backend Unit Tests"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+        description: "Project directory (e.g. BayaniHub-API, or '.' for root)"
+      system-name:
+        required: true
+        type: string
+        description: "System name for artifacts/display (e.g. BayaniHub-API)"
+      backend-stack:
+        required: false
+        type: string
+        default: "nestjs"
+        description: "Backend stack selected from systems JSON (nestjs|nodejs)"
+      node-version:
+        required: false
+        type: number
+        default: 24
+        description: "Node.js version"
+      test-command:
+        required: false
+        type: string
+        default: "npm run test:cov"
+        description: "Unit test command"
+      integration-test-command:
+        required: false
+        type: string
+        default: ""
+        description: "Integration test command (leave empty to skip)"
+      coverage-threshold:
+        required: false
+        type: number
+        default: 80
+        description: "Minimum coverage percentage"
+      coverage-report-path:
+        required: false
+        type: string
+        default: "coverage/coverage-summary.json"
+        description: "Coverage report path, relative to working-directory"
+      coverage-format:
+        required: false
+        type: string
+        default: "istanbul-summary"
+        description: "Coverage report format (istanbul-summary|cobertura|lcov|jacoco)"
+      enforce-coverage:
+        required: false
+        type: boolean
+        default: true
+        description: "Fail when coverage is below threshold or missing"
+      run-parallel:
+        required: false
+        type: boolean
+        default: true
+        description: "Run tests in parallel (Jest workers)"
+      upload-artifact:
+        required: false
+        type: boolean
+        default: true
+        description: "Upload coverage artifact"
+      checkout-ref:
+        required: false
+        type: string
+        default: ""
+        description: "Optional git ref/SHA to checkout, used by workflow_run chains"
+    outputs:
+      unit-test-result:
+        description: "Unit test pass/fail"
+        value: ${{ jobs.backend-unit-tests.outputs.result }}
+      integration-test-result:
+        description: "Integration test pass/fail"
+        value: ${{ jobs.backend-integration-tests.outputs.result }}
+      coverage-percent:
+        description: "Code coverage percentage"
+        value: ${{ jobs.backend-unit-tests.outputs.coverage }}
+
+permissions:
+  contents: read
+
+jobs:
+  backend-unit-tests:
+    name: "Backend Unit Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.test-run.outcome }}
+      coverage: ${{ steps.coverage-check.outputs.coverage }}
+    defaults:
+      run:
+        working-directory: ./${{ inputs.working-directory }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Setup Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json') != '' && 'npm' || '' }}
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          # No lockfile yet on a freshly scaffolded project: fall back to npm install
+          # (not reproducible, hence the warning) instead of failing on day one.
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci --ignore-scripts
+          else
+            echo "::warning::No package-lock.json, so dependencies were resolved with npm install and this run is not reproducible. Commit a lockfile."
+            npm install --no-audit --no-fund --ignore-scripts
+          fi
+
+      - name: Display Selected Backend Stack
+        run: |
+          echo "Backend stack: ${{ inputs.backend-stack }}"
+
+      - name: Run Unit Tests
+        id: test-run
+        env:
+          NODE_ENV: test
+          TEST_CMD: ${{ inputs.test-command }}
+          RUN_PARALLEL: ${{ inputs.run-parallel }}
+        run: |
+          if [[ "${TEST_CMD}" == *"--runInBand"* || "${TEST_CMD}" == *"--maxWorkers"* ]]; then
+            bash -c "${TEST_CMD}"
+          elif [ "${RUN_PARALLEL}" = "true" ]; then
+            bash -c "${TEST_CMD} --maxWorkers=50%"
+          else
+            bash -c "${TEST_CMD} --runInBand"
+          fi
+
+      - name: Parse Coverage
+        id: coverage-check
+        if: always()
+        uses: Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/actions/coverage-gate@v1
+        with:
+          report-path: ${{ inputs.coverage-report-path }}
+          format: ${{ inputs.coverage-format }}
+          threshold: ${{ inputs.coverage-threshold }}
+          enforce: ${{ inputs.enforce-coverage }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Upload Coverage Artifact
+        if: ${{ inputs.upload-artifact && always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.system-name }}-coverage
+          path: ${{ inputs.working-directory }}/coverage
+          retention-days: 14
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.system-name }}-unit-test-results
+          path: |
+            ${{ inputs.working-directory }}/coverage/coverage-summary.json
+            ${{ inputs.working-directory }}/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  backend-integration-tests:
+    name: "Integration Tests"
+    if: ${{ inputs.integration-test-command != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.integration-run.outcome }}
+    defaults:
+      run:
+        working-directory: ./${{ inputs.working-directory }}
+    services:
+      # Spins up a test database for integration tests
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Setup Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json') != '' && 'npm' || '' }}
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          # No lockfile yet on a freshly scaffolded project: fall back to npm install
+          # (not reproducible, hence the warning) instead of failing on day one.
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci --ignore-scripts
+          else
+            echo "::warning::No package-lock.json, so dependencies were resolved with npm install and this run is not reproducible. Commit a lockfile."
+            npm install --no-audit --no-fund --ignore-scripts
+          fi
+
+      - name: Display Selected Backend Stack
+        run: |
+          echo "Backend stack: ${{ inputs.backend-stack }}"
+
+      - name: Run Integration Tests
+        id: integration-run
+        run: ${{ inputs.integration-test-command }}
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload Integration Test Results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.system-name }}-integration-test-results
+          path: ${{ inputs.working-directory }}/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+

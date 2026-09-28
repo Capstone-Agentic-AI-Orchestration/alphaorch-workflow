@@ -1,0 +1,348 @@
+{
+    "schemaVersion":  1,
+    "recipes":  [
+                    {
+                        "id":  "frontend-standard-ci",
+                        "label":  "Frontend Standard CI",
+                        "description":  "Run frontend tests, lint, security scan, build, and deploy to Vercel.",
+                        "supportedProjectTypes":  [
+                                                      "nextjs-app",
+                                                      "react-spa"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nextjs-app":  "fe-nextjs",
+                                                      "react-spa":  "fe-react"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  true,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  false,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "build":  "build",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security",
+                                           "deploy":  "deploy-vercel"
+                                       },
+                        "deploymentProvider":  "vercel",
+                        "legacyProviders":  [
+
+                                            ],
+                        "requiresSecrets":  [
+                                                "VERCEL_TOKEN",
+                                                "VERCEL_ORG_ID",
+                                                "VERCEL_PROJECT_ID"
+                                            ],
+                        "requiresVariables":  [
+
+                                              ]
+                    },
+                    {
+                        "id":  "backend-api-ci",
+                        "label":  "Backend API CI",
+                        "description":  "Run backend tests, lint, security scan, build, and deploy to Render.",
+                        "supportedProjectTypes":  [
+                                                      "nestjs-api",
+                                                      "nodejs-api"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nestjs-api":  "be-nestjs",
+                                                      "nodejs-api":  "be-nodejs"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  false,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  true,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security",
+                                           "docker":  "docker",
+                                           "deploy":  "deploy-render"
+                                       },
+                        "deploymentProvider":  "render",
+                        "legacyProviders":  [
+
+                                            ],
+                        "requiresSecrets":  [
+                                                "RENDER_DEPLOY_HOOK_URL_DEV",
+                                                "RENDER_DEPLOY_HOOK_URL_UAT",
+                                                "RENDER_DEPLOY_HOOK_URL_MAIN",
+                                                "RENDER_HEALTHCHECK_URL_DEV",
+                                                "RENDER_HEALTHCHECK_URL_UAT",
+                                                "RENDER_HEALTHCHECK_URL_MAIN"
+                                            ],
+                        "requiresVariables":  [
+
+                                              ]
+                    },
+                    {
+                        "id":  "frontend-checks",
+                        "label":  "Frontend Checks",
+                        "description":  "Solo Basic frontend checks without SonarCloud or hosted deployment.",
+                        "supportedProjectTypes":  [
+                                                      "nextjs-app",
+                                                      "react-spa"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nextjs-app":  "fe-nextjs",
+                                                      "react-spa":  "fe-react"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  true,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  false,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "build":  "build",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security"
+                                       }
+                    },
+                    {
+                        "id":  "backend-checks",
+                        "label":  "Backend Checks",
+                        "description":  "Solo Basic backend checks without SonarCloud or hosted deployment.",
+                        "supportedProjectTypes":  [
+                                                      "nestjs-api",
+                                                      "nodejs-api"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nestjs-api":  "be-nestjs",
+                                                      "nodejs-api":  "be-nodejs"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  false,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  true,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security",
+                                           "docker":  "docker"
+                                       }
+                    },
+                    {
+                        "id":  "frontend-code-quality",
+                        "label":  "Frontend Code Quality",
+                        "description":  "Solo Plus frontend pipeline: checks plus SonarCloud quality gate and Vercel deployment.",
+                        "supportedProjectTypes":  [
+                                                      "nextjs-app",
+                                                      "react-spa"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nextjs-app":  "fe-nextjs",
+                                                      "react-spa":  "fe-react"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  true,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  false,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "build":  "build",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security",
+                                           "deploy":  "deploy-vercel"
+                                       },
+                        "deploymentProvider":  "vercel",
+                        "legacyProviders":  [
+
+                                            ],
+                        "requiresSecrets":  [
+                                                "VERCEL_TOKEN",
+                                                "VERCEL_ORG_ID",
+                                                "VERCEL_PROJECT_ID"
+                                            ],
+                        "requiresVariables":  [
+
+                                              ]
+                    },
+                    {
+                        "id":  "frontend-release",
+                        "label":  "Frontend Release",
+                        "description":  "Solo Pro frontend pipeline: full quality gate, Vercel deployment, previews, and promotion.",
+                        "supportedProjectTypes":  [
+                                                      "nextjs-app",
+                                                      "react-spa"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nextjs-app":  "fe-nextjs",
+                                                      "react-spa":  "fe-react"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  true,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  false,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "build":  "build",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security",
+                                           "deploy":  "deploy-vercel"
+                                       },
+                        "deploymentProvider":  "vercel",
+                        "legacyProviders":  [
+
+                                            ],
+                        "requiresSecrets":  [
+                                                "VERCEL_TOKEN",
+                                                "VERCEL_ORG_ID",
+                                                "VERCEL_PROJECT_ID"
+                                            ],
+                        "requiresVariables":  [
+
+                                              ]
+                    },
+                    {
+                        "id":  "backend-code-quality",
+                        "label":  "Backend Code Quality",
+                        "description":  "Solo Plus backend pipeline: checks plus SonarCloud quality gate and Render deployment.",
+                        "supportedProjectTypes":  [
+                                                      "nestjs-api",
+                                                      "nodejs-api"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nestjs-api":  "be-nestjs",
+                                                      "nodejs-api":  "be-nodejs"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  false,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  true,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security",
+                                           "docker":  "docker",
+                                           "deploy":  "deploy-render"
+                                       },
+                        "deploymentProvider":  "render",
+                        "legacyProviders":  [
+
+                                            ],
+                        "requiresSecrets":  [
+                                                "RENDER_DEPLOY_HOOK_URL_DEV",
+                                                "RENDER_DEPLOY_HOOK_URL_UAT",
+                                                "RENDER_DEPLOY_HOOK_URL_MAIN",
+                                                "RENDER_HEALTHCHECK_URL_DEV",
+                                                "RENDER_HEALTHCHECK_URL_UAT",
+                                                "RENDER_HEALTHCHECK_URL_MAIN"
+                                            ],
+                        "requiresVariables":  [
+
+                                              ]
+                    },
+                    {
+                        "id":  "backend-release",
+                        "label":  "Backend Release",
+                        "description":  "Solo Pro backend pipeline: full quality gate, Render deployment, previews, and promotion.",
+                        "supportedProjectTypes":  [
+                                                      "nestjs-api",
+                                                      "nodejs-api"
+                                                  ],
+                        "templateByProjectType":  {
+                                                      "nestjs-api":  "be-nestjs",
+                                                      "nodejs-api":  "be-nodejs"
+                                                  },
+                        "mandatoryJobs":  [
+
+                                          ],
+                        "supportedOptions":  {
+                                                 "lint":  true,
+                                                 "unit":  true,
+                                                 "build":  false,
+                                                 "coverage":  true,
+                                                 "security":  true,
+                                                 "docker":  true,
+                                                 "e2e":  false
+                                             },
+                        "optionJobs":  {
+                                           "lint":  "lint",
+                                           "unit":  "unit-tests",
+                                           "coverage":  "unit-tests",
+                                           "security":  "security",
+                                           "docker":  "docker",
+                                           "deploy":  "deploy-render"
+                                       },
+                        "deploymentProvider":  "render",
+                        "legacyProviders":  [
+
+                                            ],
+                        "requiresSecrets":  [
+                                                "RENDER_DEPLOY_HOOK_URL_DEV",
+                                                "RENDER_DEPLOY_HOOK_URL_UAT",
+                                                "RENDER_DEPLOY_HOOK_URL_MAIN",
+                                                "RENDER_HEALTHCHECK_URL_DEV",
+                                                "RENDER_HEALTHCHECK_URL_UAT",
+                                                "RENDER_HEALTHCHECK_URL_MAIN"
+                                            ],
+                        "requiresVariables":  [
+
+                                              ]
+                    }
+                ]
+}

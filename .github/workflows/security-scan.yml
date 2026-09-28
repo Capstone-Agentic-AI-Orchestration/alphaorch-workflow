@@ -1,0 +1,223 @@
+# Contract: docs/workflows/security-scan.md
+name: "Reusable: Security Scan"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+        description: "Project directory"
+      system-name:
+        required: true
+        type: string
+        description: "System name for artifacts/display"
+      node-version:
+        required: false
+        type: number
+        default: 24
+        description: "Node.js version"
+      fail-on-high:
+        required: false
+        type: boolean
+        default: true
+        description: "Fail pipeline on HIGH severity vulnerabilities"
+      checkout-ref:
+        required: false
+        type: string
+        default: ""
+        description: "Optional git ref/SHA to checkout, used by workflow_run chains"
+    outputs:
+      audit-result:
+        description: "npm audit result"
+        value: ${{ jobs.dependency-audit.outputs.result }}
+      vulnerabilities-critical:
+        description: "Packages with a critical advisory"
+        value: ${{ jobs.dependency-audit.outputs.vulnerabilities-critical }}
+      vulnerabilities-high:
+        description: "Packages with a high advisory"
+        value: ${{ jobs.dependency-audit.outputs.vulnerabilities-high }}
+      vulnerabilities-items:
+        description: "JSON array of {package,severity,title} for high and critical findings, capped"
+        value: ${{ jobs.dependency-audit.outputs.vulnerabilities-items }}
+
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: "Dependency Audit"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.audit.outcome }}
+      vulnerabilities-critical: ${{ steps.summary.outputs.vulnerabilities-critical }}
+      vulnerabilities-high: ${{ steps.summary.outputs.vulnerabilities-high }}
+      vulnerabilities-items: ${{ steps.summary.outputs.vulnerabilities-items }}
+    defaults:
+      run:
+        working-directory: ./${{ inputs.working-directory }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Setup Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Dependencies
+        run: |
+          # `npm ci` is the right command and a hard requirement on it is not.
+          #
+          # It refuses to run without a lockfile:
+          #
+          #   npm error `npm ci` can only install with an existing
+          #   package-lock.json or npm-shrinkwrap.json
+          #
+          # A freshly scaffolded project has no lockfile - it is produced by
+          # the first `npm install` the developer runs - so every job that
+          # installed this way died on its first step before touching the
+          # code. Three of them did, on every run, for a project whose tests
+          # were fine.
+          #
+          # Falling back keeps the pipeline usable on day one, and the warning
+          # keeps the fallback from becoming the norm: an install without a
+          # lockfile resolves whatever is newest that morning, so two runs of
+          # the same commit can test different dependency trees.
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci --ignore-scripts
+          else
+            echo "::warning::No package-lock.json, so dependencies were resolved with npm install and this run is not reproducible. Commit a lockfile."
+            npm install --no-audit --no-fund --ignore-scripts
+          fi
+
+      - name: Run npm audit
+        id: audit
+        env:
+          FAIL_ON_HIGH: ${{ inputs.fail-on-high }}
+        run: |
+          echo "Running dependency audit..."
+          npm audit --json > audit-report.json 2>&1 || true
+          npm audit --audit-level=high 2>&1 || AUDIT_EXIT=$?
+
+          if [ "${AUDIT_EXIT:-0}" -ne 0 ] && [ "${FAIL_ON_HIGH}" = "true" ]; then
+            echo "HIGH/CRITICAL vulnerabilities found"
+            npm audit --audit-level=high 2>&1
+            exit 1
+          fi
+          echo "No HIGH/CRITICAL vulnerabilities"
+
+      - name: Summarise Audit Results
+        id: summary
+        if: always()
+        run: |
+          if [ ! -f "audit-report.json" ]; then
+            echo "Warning: audit-report.json not found - skipping summary."
+            exit 0
+          fi
+
+          if ! jq -e '.vulnerabilities' audit-report.json >/dev/null 2>&1; then
+            echo "Warning: Audit report has no vulnerabilities key - may be an older npm format."
+            cat audit-report.json | head -60
+            exit 0
+          fi
+
+          TOTAL=$(jq '[.vulnerabilities | to_entries[].value.severity] | length' audit-report.json)
+          CRITICAL=$(jq '[.vulnerabilities | to_entries[].value | select(.severity=="critical")] | length' audit-report.json)
+          HIGH=$(jq '[.vulnerabilities | to_entries[].value | select(.severity=="high")] | length' audit-report.json)
+          MODERATE=$(jq '[.vulnerabilities | to_entries[].value | select(.severity=="moderate")] | length' audit-report.json)
+          LOW=$(jq '[.vulnerabilities | to_entries[].value | select(.severity=="low")] | length' audit-report.json)
+          INFO=$(jq '[.vulnerabilities | to_entries[].value | select(.severity=="info")] | length' audit-report.json)
+
+          echo "Dependency audit summary"
+          echo "Total vulnerabilities: ${TOTAL}"
+          echo "Critical: ${CRITICAL}"
+          echo "High: ${HIGH}"
+          echo "Moderate: ${MODERATE}"
+          echo "Low: ${LOW}"
+          echo "Info: ${INFO}"
+
+          # Publish what was already being computed, so the platform can name
+          # the vulnerable packages instead of only reporting a pass or fail.
+          # `via` carries the advisory title; severities are already lowercase
+          # in npm's output, which is the form the backend filters on.
+          ITEMS=$(jq -c '[.vulnerabilities | to_entries[] | select(.value.severity == "critical" or .value.severity == "high") | {package: .key, severity: .value.severity, title: (.value.via | if type == "array" then (map(if type == "string" then . else (.title // .url // "advisory") end) | join(", ")) else (. | tostring) end)}] | .[0:20]' audit-report.json)
+
+          {
+            echo "vulnerabilities-critical=${CRITICAL}"
+            echo "vulnerabilities-high=${HIGH}"
+            echo "vulnerabilities-items=${ITEMS}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 0 ]; then
+            echo ""
+            echo "Packages with HIGH/CRITICAL vulnerabilities:"
+            jq -r '.vulnerabilities | to_entries[] | select(.value.severity == "critical" or .value.severity == "high") | "  - \(.key) (\(.value.severity)) - via \(.value.via | if type == "array" then map(if type == "string" then . else .title // .url // "direct" end) | join(", ") else . end)"' audit-report.json
+          fi
+
+      - name: Upload Audit Report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.system-name }}-audit-report
+          path: ${{ inputs.working-directory }}/audit-report.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+  license-check:
+    name: "License Compliance"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ./${{ inputs.working-directory }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+
+      - name: Setup Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Dependencies
+        run: |
+          # `npm ci` is the right command and a hard requirement on it is not.
+          #
+          # It refuses to run without a lockfile:
+          #
+          #   npm error `npm ci` can only install with an existing
+          #   package-lock.json or npm-shrinkwrap.json
+          #
+          # A freshly scaffolded project has no lockfile - it is produced by
+          # the first `npm install` the developer runs - so every job that
+          # installed this way died on its first step before touching the
+          # code. Three of them did, on every run, for a project whose tests
+          # were fine.
+          #
+          # Falling back keeps the pipeline usable on day one, and the warning
+          # keeps the fallback from becoming the norm: an install without a
+          # lockfile resolves whatever is newest that morning, so two runs of
+          # the same commit can test different dependency trees.
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci --ignore-scripts
+          else
+            echo "::warning::No package-lock.json, so dependencies were resolved with npm install and this run is not reproducible. Commit a lockfile."
+            npm install --no-audit --no-fund --ignore-scripts
+          fi
+
+      - name: Check Licenses
+        run: |
+          npx license-checker --production --excludePrivatePackages --onlyAllow \
+            "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;Apache 2.0;0BSD;CC0-1.0;CC-BY-3.0;CC-BY-4.0;MPL-2.0;Unlicense;Python-2.0;BlueOak-1.0.0;LGPL-3.0-or-later;(Apache-2.0 AND LGPL-3.0-or-later);(BSD-2-Clause OR MIT OR Apache-2.0);(BSD-3-Clause OR GPL-2.0);(MIT OR CC0-1.0)" \
+            --summary
+          echo "All licenses are compliant"
+
+

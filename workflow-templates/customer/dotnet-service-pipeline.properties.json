@@ -1,0 +1,17 @@
+{
+    "name":  "Backend .NET",
+    "description":  "Granular .NET backend workflow using central reusable checks, dependency audit, and Render deployment.",
+    "categories":  [
+                       "backend",
+                       "dotnet",
+                       "csharp",
+                       "ci",
+                       "render"
+                   ],
+    "filePatterns":  [
+                         "*.sln",
+                         "*.csproj",
+                         "Program.cs",
+                         "global.json"
+                     ]
+}

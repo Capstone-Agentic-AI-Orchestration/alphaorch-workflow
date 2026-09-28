@@ -1,0 +1,16 @@
+{
+    "name":  "Backend NestJS",
+    "description":  "Granular NestJS backend workflow using central reusable checks and Render deployment.",
+    "categories":  [
+                       "backend",
+                       "nestjs",
+                       "ci",
+                       "render"
+                   ],
+    "filePatterns":  [
+                         "nest-cli.json",
+                         "tsconfig.build.json",
+                         "src/main.ts",
+                         "package.json"
+                     ]
+}

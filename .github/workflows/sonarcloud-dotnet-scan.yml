@@ -1,0 +1,365 @@
+# Contract: docs/workflows/sonarcloud-dotnet-scan.md
+name: "Reusable: SonarCloud .NET Analysis"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        type: string
+        default: "."
+        description: "Project directory containing the solution"
+      system-name:
+        required: true
+        type: string
+        description: "System name for display (e.g. StPeter-API)"
+      dotnet-version:
+        required: false
+        type: string
+        default: "10.0.x"
+        description: ".NET SDK version"
+      solution-path:
+        required: false
+        type: string
+        default: ""
+        description: "Solution or project to analyse, relative to working-directory. Empty lets the SDK discover it"
+      configuration:
+        required: false
+        type: string
+        default: "Release"
+        description: "Build configuration (Release|Debug)"
+      sources-path:
+        required: false
+        type: string
+        default: "src"
+        description: "Value for sonar.sources"
+      tests-path:
+        required: false
+        type: string
+        default: "tests"
+        description: "Value for sonar.tests. Must not overlap sources-path"
+      coverage-report-path:
+        required: false
+        type: string
+        default: "coverage/coverage.cobertura.xml"
+        description: "Cobertura report, relative to working-directory. Read only to tell a coverage-less run apart from one whose report is in a format no .NET importer can read"
+      generic-coverage-report-path:
+        required: false
+        type: string
+        default: "coverage/SonarQube.xml"
+        description: "Coverage in SonarQube generic format, relative to working-directory. This is the one actually imported: SonarScanner for .NET has no Cobertura importer"
+      coverage-artifact-name:
+        required: false
+        type: string
+        default: ""
+        description: "Name of coverage artifact to download (leave empty to skip)"
+      coverage-exclusions:
+        required: false
+        type: string
+        default: "tests/**"
+        description: "Value for sonar.coverage.exclusions. Test code should not count towards the product's coverage."
+      quality-gate-wait:
+        required: false
+        type: boolean
+        default: false
+        description: "Block until SonarCloud returns the quality gate result"
+      checkout-ref:
+        required: false
+        type: string
+        default: ""
+        description: "Optional git ref/SHA to checkout, used by workflow_run chains"
+    outputs:
+      status:
+        description: "Analysis pass/fail"
+        value: ${{ jobs.sonarcloud-dotnet.outputs.status }}
+      blocked-by:
+        description: "Why the analysis could not run, when the cause is a setting rather than the code"
+        value: ${{ jobs.sonarcloud-dotnet.outputs.blocked-by }}
+      gate-status:
+        description: "SonarCloud quality gate: OK, ERROR, or UNKNOWN when it could not be read"
+        value: ${{ jobs.sonarcloud-dotnet.outputs.gate-status }}
+      failed-conditions:
+        description: "Quality-gate conditions that failed, each with its actual value and threshold"
+        value: ${{ jobs.sonarcloud-dotnet.outputs.failed-conditions }}
+      measures:
+        description: "Bugs, vulnerabilities, code smells, hotspots, coverage and duplication as reported by SonarCloud"
+        value: ${{ jobs.sonarcloud-dotnet.outputs.measures }}
+    secrets:
+      SONAR_TOKEN:
+        required: false
+      SONAR_PROJECT_KEY:
+        required: false
+      SONAR_ORGANIZATION:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  sonarcloud-dotnet:
+    name: "SonarCloud .NET Analysis"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      status: ${{ steps.scan.outcome }}
+      blocked-by: ${{ steps.scan.outputs.blocked-by }}
+      gate-status: ${{ steps.findings.outputs.gate-status }}
+      failed-conditions: ${{ steps.findings.outputs.failed-conditions }}
+      measures: ${{ steps.findings.outputs.measures }}
+    defaults:
+      run:
+        working-directory: ./${{ inputs.working-directory }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+          # Sonar reads history to attribute issues to authors and to decide
+          # what is new code. A shallow clone makes every line look new.
+          fetch-depth: 0
+
+      - name: Setup .NET ${{ inputs.dotnet-version }}
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      # The scanner is a .NET tool, and on some images the SDK ships without a
+      # JRE. SonarScanner needs Java to run the analysis itself.
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Download Coverage Report
+        if: ${{ inputs.coverage-artifact-name != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.coverage-artifact-name }}
+          path: ${{ inputs.working-directory }}/coverage
+
+      - name: Validate SonarCloud project access
+        id: preflight
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SONAR_TOKEN}" ] || [ -z "${SONAR_ORGANIZATION}" ] || [ -z "${SONAR_PROJECT_KEY}" ]; then
+            echo "::error::SonarCloud secrets are not configured for this repository."
+            exit 1
+          fi
+          echo "SonarCloud credentials present."
+
+      # begin -> build -> end is the whole point of this workflow. The scanner
+      # collects Roslyn analyzer output while the compiler runs, which is why
+      # the generic sonar-scanner CLI cannot analyse C# at all: it only reads
+      # files that already exist.
+      - name: Run SonarCloud Analysis
+        id: scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+          SOLUTION_PATH: ${{ inputs.solution-path }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          SOURCES_PATH: ${{ inputs.sources-path }}
+          TESTS_PATH: ${{ inputs.tests-path }}
+          COVERAGE_REPORT_PATH: ${{ inputs.coverage-report-path }}
+          GENERIC_COVERAGE_REPORT_PATH: ${{ inputs.generic-coverage-report-path }}
+          COVERAGE_EXCLUSIONS: ${{ inputs.coverage-exclusions }}
+          QUALITY_GATE_WAIT: ${{ inputs.quality-gate-wait }}
+        run: |
+          set -euo pipefail
+
+          if [ "${SOURCES_PATH}" = "${TESTS_PATH}" ]; then
+            echo "::error::sonar.sources and sonar.tests are both '${SOURCES_PATH}'. Sonar refuses to index a file as source and test, and fails the scan."
+            exit 1
+          fi
+
+          # SonarScanner for .NET refuses to start when a sonar-project.properties
+          # is present, and only says so after the build has already run:
+          #
+          #   sonar-project.properties files are not understood by the
+          #   SonarScanner for .NET. Remove those files from the following
+          #   folders: ...
+          #   Post-processing failed. Exit code: 1
+          #
+          # Projects scaffolded before this was understood carry one, and it
+          # failed their quality stage every time. Removing it here repairs
+          # them without anyone editing their repository: this is the runner's
+          # own checkout, discarded when the job ends, so nothing upstream
+          # changes. Every value the file held is passed below as an argument.
+          if [ -f sonar-project.properties ]; then
+            rm -f sonar-project.properties
+            echo "::warning::Removed sonar-project.properties from the workspace checkout. SonarScanner for .NET does not support it, and every value it held is passed on the command line. Delete it from the repository to silence this warning."
+          fi
+
+          dotnet tool install --global dotnet-sonarscanner
+          export PATH="${PATH}:${HOME}/.dotnet/tools"
+
+          target=()
+          if [ -n "${SOLUTION_PATH}" ]; then
+            target+=("${SOLUTION_PATH}")
+          fi
+
+          # Coverage is optional: a repository whose tests produced no report
+          # should still get code analysis rather than no analysis at all.
+          # The format matters more than the path.
+          #
+          # SonarScanner for .NET has no Cobertura importer. This used to point
+          # BOTH of these at the Cobertura file, and neither one can read it:
+          # vscoveragexml expects a Visual Studio .coveragexml, and
+          # sonar.coverageReportPaths is the GENERIC importer, which expects
+          # SonarQube's own <coverage><file><lineToCover> schema. The generic
+          # one does not degrade quietly - it fails the entire analysis:
+          #
+          #   ERROR: Error during parsing of the generic coverage report
+          #   'coverage/coverage.cobertura.xml'. Look at SonarQube
+          #   documentation to know the expected XML format.
+          #
+          # dotnet-test.yml now emits that generic schema alongside the
+          # Cobertura one, from the same ReportGenerator merge, so the number
+          # Sonar imports and the number the coverage gate enforces come from
+          # one source and cannot drift.
+          coverage=()
+          if [ -f "${GENERIC_COVERAGE_REPORT_PATH}" ]; then
+            coverage+=("/d:sonar.coverageReportPaths=${GENERIC_COVERAGE_REPORT_PATH}")
+            echo "Coverage report found at ${GENERIC_COVERAGE_REPORT_PATH}"
+          elif [ -f "${COVERAGE_REPORT_PATH}" ]; then
+            # Reported rather than passed. Handing this file to an importer that
+            # cannot read it is what broke the analysis in the first place, and
+            # losing coverage is better than losing the scan.
+            echo "::warning::Only ${COVERAGE_REPORT_PATH} is present and no .NET importer can read Cobertura. Analysing without coverage. The test job publishes ${GENERIC_COVERAGE_REPORT_PATH} for this; a caller pinned to an older central ref will not have it."
+          else
+            echo "::warning::No coverage report at ${GENERIC_COVERAGE_REPORT_PATH}; analysing without coverage."
+          fi
+
+          # Test code should not count towards the product's coverage. The
+          # scaffolded properties file used to say this; the caller does now.
+          exclusions=()
+          if [ -n "${COVERAGE_EXCLUSIONS}" ]; then
+            exclusions+=("/d:sonar.coverage.exclusions=${COVERAGE_EXCLUSIONS}")
+          fi
+
+          gate=()
+          if [ "${QUALITY_GATE_WAIT}" = "true" ]; then
+            gate+=("/d:sonar.qualitygate.wait=true")
+          fi
+
+          dotnet sonarscanner begin \
+            /k:"${SONAR_PROJECT_KEY}" \
+            /o:"${SONAR_ORGANIZATION}" \
+            /d:sonar.token="${SONAR_TOKEN}" \
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.sources="${SOURCES_PATH}" \
+            /d:sonar.tests="${TESTS_PATH}" \
+            "${coverage[@]}" \
+            "${exclusions[@]}" \
+            "${gate[@]}"
+
+          dotnet build "${target[@]}" --configuration "${CONFIGURATION}"
+
+          # The post-processing step is where SonarCloud rejects the analysis,
+          # and its own summary is only "Post-processing failed. Exit code: 1".
+          # The reason sits forty lines up the log, so it is pulled out here.
+          set +e
+          dotnet sonarscanner end /d:sonar.token="${SONAR_TOKEN}" 2>&1 | tee sonar-end.log
+          scanner_status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "${scanner_status}" -ne 0 ] && grep -q "Automatic Analysis is enabled" sonar-end.log; then
+            # Documented behaviour, not a bug: "Automatic analysis is not
+            # intended to be used in conjunction with CI-based analysis. If you
+            # enable automatic analysis, you must ensure that you do not have
+            # any CI-based analyses configured. If you do then these CI-based
+            # analyses will fail and cause a failure in your build process."
+            #
+            # It bites every new project rather than once per organisation:
+            # automatic analysis is ON by default for new projects, and the
+            # organisation-level switch that would turn it off for all of them
+            # is an Enterprise-plan feature. On any lower plan it has to be
+            # turned off per project, and there is no supported Web API for it.
+            #
+            # CI-based analysis is the one to keep. Automatic analysis states
+            # plainly that "code coverage information is not supported", and a
+            # coverage-gated pipeline that cannot report coverage has given up
+            # the thing it exists to measure.
+            # Published as a fact, not left in an annotation.
+            #
+            # A workflow-level ::error:: is attributed to `.github`, and the
+            # platform drops annotations with that path — deliberately, because
+            # the runner's own "Process completed with exit code 1" arrives the
+            # same way and says nothing. Verified against a real failed run: the
+            # only two `.github` annotations were that notice and this
+            # workflow's own warning. So the reason has to travel as an output
+            # or it does not travel at all.
+            echo "blocked-by=automatic-analysis" >> "$GITHUB_OUTPUT"
+            echo "::error title=SonarCloud Automatic Analysis is on::This project has Automatic Analysis enabled, which SonarCloud refuses to run alongside a CI analysis. Turn it off for THIS project: SonarCloud -> the project -> Administration -> Analysis Method -> unselect 'Enabled for this project'. Keep the CI analysis: automatic analysis cannot read a coverage report, so the coverage gate would stop meaning anything."
+          fi
+
+          exit "${scanner_status}"
+
+      # Bring the findings back, so nobody has to open SonarCloud to learn what
+      # it said.
+      #
+      # The scan itself reports only pass or fail. Everything that makes the
+      # verdict actionable — which quality-gate condition failed, at what value,
+      # against what threshold, and how many issues of each kind — lives in
+      # SonarCloud and was reachable only by leaving the product.
+      #
+      # Both endpoints are documented Web API v1 and take the same token the
+      # scan already holds. Read-only, and never allowed to fail the job: this
+      # step reports what the analysis found, it does not decide anything.
+      - name: Collect Findings
+        id: findings
+        if: always() && steps.scan.conclusion != 'skipped'
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${SONAR_TOKEN}" ] || [ -z "${SONAR_PROJECT_KEY}" ]; then
+            echo "No SonarCloud credentials; nothing to collect."
+            exit 0
+          fi
+
+          api() {
+            curl -sf --max-time 20 \
+              -H "Authorization: Bearer ${SONAR_TOKEN}" \
+              "https://sonarcloud.io/api/$1" 2>/dev/null
+          }
+
+          # The gate, and the conditions behind it. `project_status` names each
+          # condition with its actual value and its threshold, which is the
+          # difference between "quality gate failed" and "coverage 61.2% is
+          # below the required 80%".
+          gate_json="$(api "qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}")"
+          gate_status="$(printf '%s' "${gate_json}" | jq -r '.projectStatus.status // "UNKNOWN"' 2>/dev/null || echo UNKNOWN)"
+
+          conditions="$(printf '%s' "${gate_json}" | jq -c '
+            [.projectStatus.conditions[]?
+             | select(.status == "ERROR" or .status == "WARN")
+             | {metric: .metricKey, status: .status, actual: .actualValue, threshold: .errorThreshold}]
+          ' 2>/dev/null || printf '[]')"
+
+          # The counts a reader wants first. Requested in one call; a metric the
+          # plan does not expose simply comes back absent rather than failing.
+          measures_json="$(api "measures/component?component=${SONAR_PROJECT_KEY}&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,coverage,duplicated_lines_density")"
+          measures="$(printf '%s' "${measures_json}" | jq -c '
+            [.component.measures[]? | {(.metric): .value}] | add // {}
+          ' 2>/dev/null || printf '{}')"
+
+          {
+            echo "gate-status=${gate_status}"
+            echo "failed-conditions=${conditions:-[]}"
+            echo "measures=${measures:-{\}}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Quality gate: ${gate_status}"
+          printf '%s' "${conditions}" | jq -r '.[]? | "  \(.metric): \(.actual) (threshold \(.threshold))"' 2>/dev/null || true
+          printf '%s' "${measures}" | jq -r 'to_entries[]? | "  \(.key): \(.value)"' 2>/dev/null || true
