@@ -1,0 +1,12 @@
+{
+    "name": "Post-deploy verify (Alpha-hosted)",
+    "description": "Checks that a deployment answers after the hosting platform deployed it, on deployment_status or by hand.",
+    "categories": [
+        "verify",
+        "deployment",
+        "alpha-hosted"
+    ],
+    "filePatterns": [
+        "package.json"
+    ]
+}

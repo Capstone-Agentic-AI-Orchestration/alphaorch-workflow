@@ -1,0 +1,102 @@
+# Contract: docs/workflows/post-deploy-verify.md
+name: "Reusable: Post-Deploy Verify"
+
+# Checks that a deployed environment answers, after the hosting platform has
+# deployed it. For repositories whose hosting deploys through the platform's
+# own GitHub app, where CI never deploys and so cannot check what it did not
+# ship. The caller passes the deployment's own URL -- a deployment_status
+# event carries it as environment_url -- so the build that was just released
+# is the one checked, with no stored URL and no secret.
+
+on:
+  workflow_call:
+    inputs:
+      base-url:
+        description: "The deployment's URL, e.g. github.event.deployment_status.environment_url"
+        required: true
+        type: string
+      health-path:
+        description: "Path to request, e.g. /health for a backend. Empty requests the base URL itself."
+        required: false
+        type: string
+        default: ""
+      timeout-seconds:
+        description: "How long to keep trying. Long enough for a sleeping free-tier service to wake."
+        required: false
+        type: number
+        default: 180
+      interval-seconds:
+        description: "Pause between attempts."
+        required: false
+        type: number
+        default: 10
+      environment-name:
+        description: "Shown in the summary, e.g. production or uat."
+        required: false
+        type: string
+        default: ""
+    outputs:
+      status:
+        description: "The last HTTP status received (000 when there was no answer)."
+        value: ${{ jobs.verify.outputs.status }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: "Verify ${{ inputs.environment-name || 'deployment' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      status: ${{ steps.probe.outputs.status }}
+    steps:
+      - name: "Wait for a 2xx answer"
+        id: probe
+        shell: bash
+        env:
+          BASE_URL: ${{ inputs.base-url }}
+          HEALTH_PATH: ${{ inputs.health-path }}
+          TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+          INTERVAL_SECONDS: ${{ inputs.interval-seconds }}
+          ENVIRONMENT_NAME: ${{ inputs.environment-name }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BASE_URL" =~ ^https:// ]]; then
+            echo "::error::base-url must be an https URL, got '${BASE_URL}'."
+            echo "status=000" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          url="${BASE_URL%/}${HEALTH_PATH}"
+          deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+          status="000"
+          attempt=0
+          while :; do
+            attempt=$(( attempt + 1 ))
+            # No redirects followed: a health endpoint that redirects is not healthy.
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 "$url" || true)
+            echo "Attempt ${attempt}: ${url} answered ${status}"
+            if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+              break
+            fi
+            if (( $(date +%s) + INTERVAL_SECONDS > deadline )); then
+              break
+            fi
+            sleep "$INTERVAL_SECONDS"
+          done
+
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Post-deploy verify${ENVIRONMENT_NAME:+: ${ENVIRONMENT_NAME}}"
+            echo ""
+            echo "| URL | Status | Attempts |"
+            echo "| --- | --- | --- |"
+            echo "| ${url} | ${status} | ${attempt} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+            echo "::error::${url} did not answer 2xx within ${TIMEOUT_SECONDS}s (last status ${status})."
+            exit 1
+          fi

@@ -1,0 +1,16 @@
+{
+    "name": "Backend NestJS (Alpha-hosted)",
+    "description": "Granular NestJS backend workflow using central reusable checks. CI only: hosting deploys through the Render GitHub app.",
+    "categories": [
+        "backend",
+        "nestjs",
+        "ci",
+        "alpha-hosted"
+    ],
+    "filePatterns": [
+        "nest-cli.json",
+        "tsconfig.build.json",
+        "src/main.ts",
+        "package.json"
+    ]
+}

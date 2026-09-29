@@ -1,0 +1,16 @@
+{
+    "name": "Frontend Next.js (Alpha-hosted)",
+    "description": "Granular Next.js frontend workflow using central reusable checks. CI only: hosting deploys through the Vercel GitHub app.",
+    "categories": [
+        "frontend",
+        "nextjs",
+        "ci",
+        "alpha-hosted"
+    ],
+    "filePatterns": [
+        "next.config.js",
+        "next.config.mjs",
+        "next.config.ts",
+        "package.json"
+    ]
+}

@@ -1,41 +1,52 @@
 # Customer Secret Setup
 
-The MVP records required external secrets as setup checklist items. It should not store customer provider secrets directly.
+The platform records required external secrets as setup checklist items. It does not store customer
+provider secrets.
 
 ## GitHub Actions Secrets
 
-Customers add secrets in:
+Secrets are added in:
 
 ```text
 Repository Settings -> Secrets and variables -> Actions -> New repository secret
 ```
 
-## Deployment Secrets
+## Deployment
 
-Deploys go through Render (backends) or Vercel (frontends). Neither provider requires
-GCP-style Workload Identity Federation setup; both authenticate with a stored secret.
+### Alpha-hosted repositories (`workflow-templates/product/`)
 
-### Render
+**No deploy secrets.** Alpha connects the repository to Render (backends) or Vercel (frontends), and
+the platform's own GitHub app deploys each push. Render and Vercel credentials stay on the Alpha
+server; nothing is installed into the repository.
 
-- `RENDER_DEPLOY_HOOK_URL_DEV`
-- `RENDER_DEPLOY_HOOK_URL_UAT`
-- `RENDER_DEPLOY_HOOK_URL_MAIN`
-- `RENDER_HEALTHCHECK_URL_DEV`
-- `RENDER_HEALTHCHECK_URL_UAT`
-- `RENDER_HEALTHCHECK_URL_MAIN`
+Alpha writes these repository **variables** (not secrets; they are public URLs):
+
+- `ALPHA_URL_MAIN`, `ALPHA_URL_UAT`, `ALPHA_URL_DEV`: the stable URL of each hosted environment,
+  for workflows that need one without a deployment event. A backend has no `dev` environment.
+
+Hosting environment variables (API keys, database URLs) are set in Alpha's Variables panel. They
+are stored by the platform as secrets, never in the repository.
+
+### CI-deployed repositories (`workflow-templates/customer/`)
+
+The deploy job authenticates with repository secrets:
+
+Render:
+- `RENDER_DEPLOY_HOOK_URL_DEV`, `RENDER_DEPLOY_HOOK_URL_UAT`, `RENDER_DEPLOY_HOOK_URL_MAIN`
+- `RENDER_HEALTHCHECK_URL_DEV`, `RENDER_HEALTHCHECK_URL_UAT`, `RENDER_HEALTHCHECK_URL_MAIN`
 
 Per-branch secrets fall back to `RENDER_DEPLOY_HOOK_URL` / `RENDER_HEALTHCHECK_URL` when the
 branch-specific secret is not set.
 
-### Vercel
+Vercel:
+- `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
 
-- `VERCEL_TOKEN`
-- `VERCEL_ORG_ID`
-- `VERCEL_PROJECT_ID`
+## Other secrets
 
 ### Auto-promotion
 
-- `GH_PR_TOKEN`: token used by promotion workflows to open or update pull requests.
+- `GH_PR_TOKEN`: the token promotion workflows use to open or update pull requests. Alpha-hosted
+  repositories do not need it; Alpha opens promotion pull requests itself.
 
 ### Grafana k6
 
@@ -50,7 +61,4 @@ Repository variables are safe for non-secret setup values such as:
 - `K6_BASE_URL`
 - `REQUIRE_PRODUCTION_APPROVAL`
 
-There are no GCP project, region, Workload Identity Federation, or Cloud Run variables to
-configure; deployment targets are addressed entirely through the Render/Vercel secrets above.
-
-The dashboard should link users directly to the generated repository's Actions secrets and variables pages.
+The dashboard should link users directly to the repository's Actions secrets and variables pages.

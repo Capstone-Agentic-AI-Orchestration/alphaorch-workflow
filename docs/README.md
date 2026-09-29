@@ -11,12 +11,18 @@ The source of truth is `Capstone-Agentic-AI-Orchestration/alphaorch-workflow`. G
 workflows must reference `Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/workflows/*@v1`.
 
 This repository has no platform backend of its own: it is a standalone reusable-workflow
-library consumed directly by generated caller workflows. Deployment goes through the two
-hosted-provider workflows in this repo — `render-deploy.yml` for backends and
-`vercel-deploy.yml` for frontends — driven by repository secrets on the consuming repo, not
-by a platform API token. Validate on `dev` and `uat` first; `main` is the only branch that
-deploys to production, and rollback is by restoring a previously verified revision on the
-target host (Render/Vercel), not by reverting this repository.
+library consumed directly by generated caller workflows. Repositories deploy one of two ways:
+
+- **Alpha-hosted** (`workflow-templates/product/`): Alpha connects the repository to Render
+  (backends) or Vercel (frontends), and the platform's own GitHub app deploys every push. CI
+  runs the quality jobs only and holds no deploy secret. `post-deploy-verify.yml` checks what
+  was deployed.
+- **CI-deployed** (`workflow-templates/customer/`): the caller deploys through `render-deploy.yml`
+  or `vercel-deploy.yml`, driven by repository secrets on the consuming repo.
+
+Validate on `dev` and `uat` first; `main` is the only branch that deploys to production, and
+rollback is by restoring a previously verified revision on the target host (Render/Vercel), not
+by reverting this repository.
 
 ## Canonical Repository Variable Names
 
@@ -72,12 +78,12 @@ Internal API Center:
 ## Branch Policy Baseline
 
 All template callers are designed for:
-- `test`
+- `dev`
 - `uat`
-- `prod`
+- `main` (production)
 
-Promotion intent is linear:
-- `test` -> `uat` -> `prod`
+Promotion intent is linear, by pull request only:
+- `dev` -> `uat` -> `main`
 
 ## Notes
 
