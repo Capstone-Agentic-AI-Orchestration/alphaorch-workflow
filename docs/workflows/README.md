@@ -10,7 +10,8 @@ The repository has three logical layers:
   and `.github/actions/` because that is what GitHub loads.
 - Customer caller templates and catalog metadata live under
   `workflow-templates/customer/`.
-- Product-specific callers are reserved for `workflow-templates/product/`.
+- Alpha-hosted callers live under `workflow-templates/product/`: the same quality jobs as the
+  customer templates, with no deploy job, for repositories Render or Vercel deploy themselves.
 - Retired provider examples live under `workflow-templates/legacy/` and are
   not selectable for new projects.
 
@@ -47,6 +48,7 @@ Customer catalog files live under `catalog/customer/`:
 | [docker-build.yml](docker-build.md) | build | Build, optionally push, and scan Docker images. |
 | [render-deploy.yml](render-deploy.md) | deploy | Deploy a backend service to Render (deploy hook or health-verify) and probe it. |
 | [vercel-deploy.yml](vercel-deploy.md) | deploy | Build and deploy a frontend to Vercel (preview or production). |
+| [post-deploy-verify.yml](post-deploy-verify.md) | verify | Check a deployed URL answers 2xx after the hosting platform deployed it. |
 | [workflow-validation.yml](workflow-validation.md) | maintenance | Validate workflow shape, contracts, catalogs, and templates. |
 
 ## Customer templates
@@ -56,15 +58,16 @@ Use the paired YAML and `.properties.json` files under
 to `Capstone-Agentic-AI-Orchestration/alphaorch-workflow/...@v1`; they must not use the retired
 `v0.1.7-smoke` tag or any legacy organization path.
 
-The backend packages this customer catalog and template directory into its
-production image. Local development mounts the sibling central workflow
-checkout. Neither mode fetches workflow definitions during project creation.
+Alpha reads these templates from this repository at a pinned ref (`ALPHAORCH_WORKFLOW_REF`,
+e.g. `v1`) at provisioning time, and points every library call in them at the repository it read
+them from. An Alpha-hosted repository gets `workflow-templates/product/<stack>.yml` as its `ci.yml`;
+`render-deploy.yml` and `vercel-deploy.yml` remain for repositories that deploy from CI themselves.
 
 ## Rules
 
 - Keep GitHub Actions runtime workflows flat under `.github/workflows/`.
-- Keep job ordering explicit with `needs`; deploy jobs run only on push to `dev`, `uat`, or `main`,
-  after the quality jobs succeed.
+- Keep job ordering explicit with `needs`. Where a caller deploys, the deploy job runs only on push to
+  `dev`, `uat` or `main`, after the quality jobs succeed. Alpha-hosted callers have no deploy job.
 - Keep quality, typecheck, tests, coverage, security, and CodeQL gates required;
   only credential-dependent deployment hooks may be optional.
 - Do not add one template per option combination. Add catalog options and let

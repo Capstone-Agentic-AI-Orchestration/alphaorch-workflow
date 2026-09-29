@@ -1,0 +1,13 @@
+{
+    "name": "Backend Node.js (Alpha-hosted)",
+    "description": "Granular Node.js backend workflow using central reusable checks. CI only: hosting deploys through the Render GitHub app.",
+    "categories": [
+        "backend",
+        "nodejs",
+        "ci",
+        "alpha-hosted"
+    ],
+    "filePatterns": [
+        "package.json"
+    ]
+}

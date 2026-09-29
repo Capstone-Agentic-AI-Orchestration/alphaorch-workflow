@@ -57,6 +57,7 @@ jobs:
             .github/workflows/mobile-tests.yml
             .github/workflows/mobile-workflow.yml
             .github/workflows/playwright-e2e.yml
+            .github/workflows/post-deploy-verify.yml
             .github/workflows/production-gate.yml
             .github/workflows/promotion.yml
             .github/workflows/publish-v1-tag.yml
@@ -238,7 +239,7 @@ jobs:
               sed -E 's#^Capstone-Agentic-AI-Orchestration/alphaorch-workflow/\.github/workflows/([^ @]+\.yml)@.*$#\1#' |
               sort -u
             )
-          done < <(find workflow-templates/customer -type f -name '*.yml' | sort)
+          done < <(find workflow-templates/customer workflow-templates/product -type f -name '*.yml' | sort)
 
           exit "$failed"
 
@@ -637,6 +638,17 @@ jobs:
             assert_not_contains "vercel-deploy.yml@v1" "workflow-templates/customer/${template}"
           done
 
+          # Alpha-hosted callers: the platform's GitHub app deploys, so CI must not.
+          for template in be-nodejs.yml be-nestjs.yml fe-nextjs.yml fe-react.yml post-deploy-verify.yml; do
+            assert_not_contains "render-deploy.yml@v1" "workflow-templates/product/${template}"
+            assert_not_contains "vercel-deploy.yml@v1" "workflow-templates/product/${template}"
+            assert_not_contains "secrets: inherit" "workflow-templates/product/${template}"
+          done
+          assert_contains "backend-tests.yml@v1" workflow-templates/product/be-nodejs.yml
+          assert_contains "backend-tests.yml@v1" workflow-templates/product/be-nestjs.yml
+          assert_contains "frontend-tests.yml@v1" workflow-templates/product/fe-react.yml
+          assert_contains "frontend-tests.yml@v1" workflow-templates/product/fe-nextjs.yml
+          assert_contains "post-deploy-verify.yml@v1" workflow-templates/product/post-deploy-verify.yml
           assert_contains "frontend-tests.yml@v1" workflow-templates/customer/fe-react.yml
           assert_contains "frontend-tests.yml@v1" workflow-templates/customer/fe-nextjs.yml
           assert_contains "backend-tests.yml@v1" workflow-templates/customer/be-nodejs.yml
