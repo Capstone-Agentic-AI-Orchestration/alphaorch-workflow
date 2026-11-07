@@ -1,0 +1,183 @@
+# Contract: docs/workflows/stack-self-test.md
+name: "Stack Self-Test"
+
+# Runs the reusable unit-test, lint, audit, and build workflows against real
+# projects whenever this library changes. A broken quality path then fails
+# here, before main moves the floating v1 tag that every generated repository
+# calls.
+#
+# tests/fixtures/alpha-scaffold/<stack> is the project Alpha creates for that
+# stack, with no lockfile, exactly as a new repository starts.
+# tests/fixtures/dotnet is a minimal C# solution with an xUnit test project.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "tests/fixtures/**"
+      - "starter-templates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stack-self-test-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  # What ci.yml runs in a repository Alpha creates and hosts
+  # (workflow-templates/product/be-*.yml and fe-*.yml).
+  backend-unit-tests:
+    name: "Unit tests (${{ matrix.stack }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [nodejs, nestjs]
+    uses: ./.github/workflows/backend-tests.yml
+    with:
+      working-directory: tests/fixtures/alpha-scaffold/${{ matrix.stack }}
+      system-name: fixture-${{ matrix.stack }}
+      backend-stack: ${{ matrix.stack }}
+
+  frontend-unit-tests:
+    name: "Unit tests (${{ matrix.stack }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [nextjs, react]
+    uses: ./.github/workflows/frontend-tests.yml
+    with:
+      working-directory: tests/fixtures/alpha-scaffold/${{ matrix.stack }}
+      system-name: fixture-${{ matrix.stack }}
+
+  lint:
+    name: "Lint (${{ matrix.stack }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [nodejs, nestjs, nextjs, react]
+    uses: ./.github/workflows/lint-check.yml
+    with:
+      working-directory: tests/fixtures/alpha-scaffold/${{ matrix.stack }}
+      system-name: fixture-${{ matrix.stack }}
+
+  audit:
+    name: "Audit (${{ matrix.stack }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [nodejs, nestjs, nextjs, react]
+    uses: ./.github/workflows/security-scan.yml
+    with:
+      working-directory: tests/fixtures/alpha-scaffold/${{ matrix.stack }}
+      system-name: fixture-${{ matrix.stack }}
+      fail-on-high: true
+
+  # The product frontend templates build inline rather than through a
+  # reusable workflow; this mirrors that job.
+  frontend-build:
+    name: "Build (${{ matrix.stack }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [nextjs, react]
+    defaults:
+      run:
+        working-directory: tests/fixtures/alpha-scaffold/${{ matrix.stack }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund --ignore-scripts
+      - run: npm run build
+
+  # .NET, as workflow-templates/customer/dotnet-service-pipeline.yml runs it.
+  dotnet-unit-tests:
+    name: "Unit tests (dotnet)"
+    uses: ./.github/workflows/dotnet-test.yml
+    with:
+      working-directory: tests/fixtures/dotnet
+      system-name: fixture-dotnet
+
+  dotnet-format:
+    name: "Format (dotnet)"
+    uses: ./.github/workflows/dotnet-format.yml
+    with:
+      working-directory: tests/fixtures/dotnet
+      system-name: fixture-dotnet
+
+  dotnet-analyze:
+    name: "Analyze (dotnet)"
+    uses: ./.github/workflows/dotnet-analyze.yml
+    with:
+      working-directory: tests/fixtures/dotnet
+      system-name: fixture-dotnet
+
+  dotnet-audit:
+    name: "Audit (dotnet)"
+    uses: ./.github/workflows/dotnet-audit.yml
+    with:
+      working-directory: tests/fixtures/dotnet
+      system-name: fixture-dotnet
+      fail-on-severity: High
+
+  dotnet-license-scan:
+    name: "Licenses (dotnet)"
+    uses: ./.github/workflows/dotnet-license-scan.yml
+    with:
+      working-directory: tests/fixtures/dotnet
+      system-name: fixture-dotnet
+
+  # The customer service pipelines: discovery has to find every stack's
+  # project and its coverage command, and a pipeline has to start with the
+  # permissions its caller template grants.
+  customer-discovery:
+    name: "Customer discovery"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Discover every scaffold
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for stack in nodejs nestjs nextjs react; do
+            # Discovery skips services with no changed files on pull requests.
+            # This check is about what it detects, so it runs as a manual
+            # event. GitHub ignores workflow-level overrides of GITHUB_*
+            # variables, so they are set on the command itself.
+            result="$(GITHUB_EVENT_NAME=workflow_dispatch GITHUB_OUTPUT=/dev/null node .github/actions/discover-service/discover-service.mjs --stack "$stack" --root "tests/fixtures/alpha-scaffold/$stack")"
+            unit="$(printf '%s' "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s.slice(s.indexOf("{")));process.stdout.write(j["should-run"]==="true"?j["unit-test-command"]:"")})')"
+            if [ -z "$unit" ]; then
+              echo "::error::Discovery found no runnable unit-test command for the $stack scaffold."
+              failed=1
+            else
+              echo "$stack: $unit"
+            fi
+          done
+          exit "$failed"
+
+  customer-node-pipeline:
+    name: "Customer Node.js pipeline"
+    # The same grant as workflow-templates/customer/nodejs-service-pipeline.yml.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/service-node.yml
+    with:
+      service-name: starter-nodejs
+      service-path: starter-templates/nodejs-api
+      typecheck-command: ""
+      unit-test-command: npm run test:cov
+      enable-dependency-review: ${{ github.event_name == 'pull_request' }}

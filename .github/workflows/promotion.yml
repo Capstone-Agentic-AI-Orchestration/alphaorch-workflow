@@ -99,10 +99,12 @@ on:
         required: false
         type: string
         default: ""
+      # Accepted so existing callers keep validating; Sonar is no longer a gate and the value is ignored.
       sonar-status:
         required: false
         type: string
         default: ""
+        description: "Deprecated and ignored."
       playwright-status:
         required: false
         type: string
@@ -169,7 +171,6 @@ jobs:
           TESTS_STATUS_INPUT: ${{ inputs.tests-status }}
           LINT_STATUS_INPUT: ${{ inputs.lint-status }}
           SECURITY_STATUS_INPUT: ${{ inputs.security-status }}
-          SONAR_STATUS_INPUT: ${{ inputs.sonar-status }}
           PLAYWRIGHT_STATUS_INPUT: ${{ inputs.playwright-status }}
           GRAFANA_STATUS_INPUT: ${{ inputs.grafana-status }}
           PIPELINE_RESULT_INPUT: ${{ inputs.pipeline-result }}
@@ -343,7 +344,6 @@ jobs:
             TESTS_STATUS="${TESTS_STATUS_INPUT}"
             LINT_STATUS="${LINT_STATUS_INPUT}"
             SECURITY_STATUS="${SECURITY_STATUS_INPUT}"
-            SONAR_STATUS="${SONAR_STATUS_INPUT}"
             PLAYWRIGHT_STATUS="${PLAYWRIGHT_STATUS_INPUT}"
             GRAFANA_STATUS="${GRAFANA_STATUS_INPUT}"
             PIPELINE_RESULT="${PIPELINE_RESULT_INPUT}"
@@ -351,14 +351,12 @@ jobs:
             TESTS_STATUS_RAW="${TESTS_STATUS_INPUT}"
             LINT_STATUS_RAW="${LINT_STATUS_INPUT}"
             SECURITY_STATUS_RAW="${SECURITY_STATUS_INPUT}"
-            SONAR_STATUS_RAW="${SONAR_STATUS_INPUT}"
             PLAYWRIGHT_STATUS_RAW="${PLAYWRIGHT_STATUS_INPUT}"
             GRAFANA_STATUS_RAW="${GRAFANA_STATUS_INPUT}"
 
             if [ -z "${TESTS_STATUS}" ]; then TESTS_STATUS="${DEFAULT_RESULT}"; fi
             if [ -z "${LINT_STATUS}" ]; then LINT_STATUS="${DEFAULT_RESULT}"; fi
             if [ -z "${SECURITY_STATUS}" ]; then SECURITY_STATUS="${DEFAULT_RESULT}"; fi
-            if [ -z "${SONAR_STATUS}" ]; then SONAR_STATUS="${DEFAULT_RESULT}"; fi
             if [ -z "${PLAYWRIGHT_STATUS}" ]; then PLAYWRIGHT_STATUS="${DEFAULT_RESULT}"; fi
             if [ -z "${GRAFANA_STATUS}" ]; then GRAFANA_STATUS="${DEFAULT_RESULT}"; fi
             if [ -z "${PIPELINE_RESULT}" ]; then PIPELINE_RESULT="${DEFAULT_RESULT}"; fi
@@ -368,14 +366,12 @@ jobs:
                 --arg tests "${TESTS_STATUS_RAW}" \
                 --arg lint "${LINT_STATUS_RAW}" \
                 --arg security "${SECURITY_STATUS_RAW}" \
-                --arg sonar "${SONAR_STATUS_RAW}" \
                 --arg playwright "${PLAYWRIGHT_STATUS_RAW}" \
                 --arg grafana "${GRAFANA_STATUS_RAW}" \
                 '({}
                   + (if ($tests | length) > 0 then {"Tests": $tests} else {} end)
                   + (if ($lint | length) > 0 then {"Lint": $lint} else {} end)
                   + (if ($security | length) > 0 then {"Security": $security} else {} end)
-                  + (if ($sonar | length) > 0 then {"SonarCloud": $sonar} else {} end)
                   + (if ($playwright | length) > 0 then {"Playwright E2E": $playwright} else {} end)
                   + (if ($grafana | length) > 0 then {"Grafana k6": $grafana} else {} end)
                 )')
@@ -412,7 +408,7 @@ jobs:
               fi
             done < <(echo "${QUALITY_GATES_JSON}" | jq -r '.[]')
           else
-            for _gate in "${TESTS_STATUS}" "${LINT_STATUS}" "${SECURITY_STATUS}" "${SONAR_STATUS}" "${PLAYWRIGHT_STATUS}" "${GRAFANA_STATUS}"; do
+            for _gate in "${TESTS_STATUS}" "${LINT_STATUS}" "${SECURITY_STATUS}" "${PLAYWRIGHT_STATUS}" "${GRAFANA_STATUS}"; do
               if [ "${_gate}" != "success" ] && [ "${_gate}" != "skipped" ]; then
                 ALL_GATES_PASSED="false"
                 break

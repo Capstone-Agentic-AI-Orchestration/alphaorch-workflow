@@ -105,6 +105,11 @@ permissions:
 jobs:
   mobile:
     name: "React Native Mobile Quality"
+    permissions:
+      # android-build publishes and scans an image, and needs these to start.
+      contents: read
+      packages: write
+      security-events: write
     uses: ./.github/workflows/mobile-react-native.yml
     with:
       system-dir: ${{ inputs.service-path }}

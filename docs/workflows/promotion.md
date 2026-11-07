@@ -13,7 +13,7 @@ pipeline, and renders the pipeline result summary into the PR body.
   `system3-name`, `system3-url`, `version-tag`, `versions-json`, `systems-json`,
   `deployment-urls-json`, `artifact-kind`, `artifact-links-json`, `quality-gates-json`,
   `results-json`, `dry-run`, `system1-result`, `system2-result`, `system3-result`, `tests-status`,
-  `lint-status`, `security-status`, `sonar-status`, `playwright-status`, `grafana-status`,
+  `lint-status`, `security-status`, `playwright-status`, `grafana-status`,
   `pipeline-result`
 - Secrets: `PR_TOKEN`
 - Outputs: none

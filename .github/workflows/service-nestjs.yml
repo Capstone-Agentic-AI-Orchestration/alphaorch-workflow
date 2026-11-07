@@ -145,6 +145,13 @@ permissions:
 jobs:
   quality:
     name: "NestJS Quality"
+    permissions:
+      # The build job requests these for provenance attestations; a caller can
+      # only pass down what it holds, so they are granted here explicitly.
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     uses: ./.github/workflows/reusable-javascript-quality.yml
     with:
       service-name: ${{ inputs.service-name }}
@@ -172,6 +179,9 @@ jobs:
 
   uat:
     name: "NestJS UAT"
+    permissions:
+      contents: read
+      id-token: write
     if: ${{ inputs.uat-deploy-command != '' || inputs.uat-command != '' || inputs.uat-base-url != '' || inputs.uat-healthcheck-url != '' }}
     needs: [quality]
     uses: ./.github/workflows/reusable-service-uat.yml

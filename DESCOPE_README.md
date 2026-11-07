@@ -240,7 +240,7 @@ This aligns with existing branch strategy (`test` -> `uat` -> `main`).
 
 ## 9) Operational decisions to finalize
 
-- SonarCloud and Descope policy alignment (required quality/security gates)
+- Descope policy alignment (required quality/security gates)
 - Free vs Pro considerations for identity/compliance requirements
 - GitHub hosted vs self-hosted runner model for auth-sensitive jobs
 - Repository privacy policy by project category

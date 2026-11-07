@@ -67,6 +67,11 @@ jobs:
 
   pipeline:
     name: "Run React Native Pipeline"
+    permissions:
+      # android-build publishes and scans an image, and needs these to start.
+      contents: read
+      packages: write
+      security-events: write
     needs: [discover]
     if: ${{ needs.discover.outputs.should-run == 'true' }}
     uses: Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/workflows/service-react-native.yml@v1

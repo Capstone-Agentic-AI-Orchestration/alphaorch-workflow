@@ -81,6 +81,13 @@ jobs:
 
   pipeline:
     name: "Run React Pipeline"
+    permissions:
+      # Everything the called pipeline's nested jobs request; a caller cannot
+      # grant more than it holds, so a narrower set stops the run at startup.
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     needs: [discover]
     if: ${{ needs.discover.outputs.should-run == 'true' }}
     uses: Capstone-Agentic-AI-Orchestration/alphaorch-workflow/.github/workflows/service-react.yml@v1

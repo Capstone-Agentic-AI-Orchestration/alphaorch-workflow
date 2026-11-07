@@ -271,7 +271,7 @@ Promotion between environments is **automated via CI** — no manual branch merg
 │                    PROMOTION FLOW                               │
 │                                                                 │
 │  Push to test                                                   │
-│    └→ CI (build, test, lint, security, sonar)                   │
+│    └→ CI (build, test, lint, security)                          │
 │        └→ Version tag: test-v1.0.0.3                            │
 │            └→ Deploy to test/preview                            │
 │                └→ Auto-create PR: test → uat                    │
@@ -301,7 +301,7 @@ When CI auto-creates a promotion PR (e.g., `test → uat`), the PR body includes
 - **Deployment URLs** for each system (Vercel preview links)
 - **Evidence table** (CI results, version tags, deployment counts)
 - **Release summary** (version tag, commit SHA, diff compare link)
-- **Quality gate results** (tests, lint, security, SonarCloud)
+- **Quality gate results** (tests, lint, security)
 
 ### Promotion Decision Matrix
 
@@ -451,7 +451,6 @@ Each environment requires its own set of secrets configured in GitHub:
 ```
 Per-environment secrets:
 ├── VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID
-├── SONAR_TOKEN / SONAR_PROJECT_KEY / SONAR_ORG
 ├── E2E_BASE_URL (optional, when Playwright targets non-local URL)
 ├── K6_CLOUD_TOKEN / K6_CLOUD_PROJECT_ID (when Grafana k6 is enabled)
 ├── DESCOPE_PROJECT_ID / DESCOPE_BASE_URL / DESCOPE_ISSUER
@@ -504,10 +503,7 @@ Every push or PR to `test`, `uat`, or `main` triggers the full pipeline:
 │     ├→ Build                                                │
 │     └→ [mobile] Gradle build + Maestro E2E (uat only)      │
 │                                                             │
-│  4. SonarCloud                                              │
-│     └→ Code quality + security analysis                     │
-│                                                             │
-│  5. Optional QA Extensions                                  │
+│  4. Optional QA Extensions                                  │
 │     ├→ Playwright E2E (multi-browser, local browser mode)    │
 │     └→ Grafana k6 load tests (cloud)                        │
 │                                                             │
@@ -594,7 +590,6 @@ Every PR must pass these gates before merge:
 | **Lint** | ESLint | Zero errors | Yes |
 | **Security Audit** | `npm audit` | No HIGH/CRITICAL | Yes |
 | **License Check** | Custom script | Allowlist only | Yes |
-| **SonarCloud** | SonarQube Scanner | Quality gate pass | Yes (when enabled) |
 | **Playwright E2E** | Playwright | Browser suite must pass | Yes (mandatory on `test`,`uat`) |
 | **Grafana k6 Load** | k6 + Grafana Cloud | Load profile must pass | Yes (mandatory on `test`,`uat`) |
 | **Frontend Standards** | Custom check | Next.js + strict TS conventions | Yes (FE repos) |
@@ -802,13 +797,6 @@ Go to **Actions** → select the master pipeline workflow → **Run workflow**:
 2. Check the versioning job logs in the pipeline run
 3. If a tag needs correction, contact DevOps to manually adjust
 4. Each system in a multi-system repo has its own tag stream — verify the correct `version_stream`
-
-### "SonarCloud analysis is failing"
-
-1. Verify `SONAR_TOKEN`, `SONAR_PROJECT_KEY`, and `SONAR_ORG` secrets are set
-2. Run a preflight: check that the SonarCloud project exists and the token has access
-3. Ensure `sonar-project.properties` exists in the repository root (or system directory)
-4. Check for new code quality issues — the quality gate may be enforcing stricter rules
 
 ---
 

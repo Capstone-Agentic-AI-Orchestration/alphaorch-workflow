@@ -407,13 +407,13 @@ function inferCommands(candidate, stack) {
   const e2eScript = findFirstScript(scripts, ["test:e2e", "e2e", "e2e:test"]);
 
   let unitScript = "";
-  for (const name of ["test:coverage", "coverage", "test:ci", "test:unit", "test"]) {
+  for (const name of ["test:coverage", "test:cov", "coverage", "test:ci", "test:unit", "test"]) {
     const body = scripts[name];
     if (!body) {
       continue;
     }
 
-    if (name === "test:coverage" || name === "coverage" || scriptBodyContainsCoverage(body)) {
+    if (name === "test:coverage" || name === "test:cov" || name === "coverage" || scriptBodyContainsCoverage(body)) {
       unitScript = name;
       break;
     }
