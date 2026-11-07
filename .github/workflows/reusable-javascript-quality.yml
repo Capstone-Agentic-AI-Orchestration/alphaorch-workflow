@@ -149,12 +149,25 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v6
 
+      - name: Convert License Deny List
+        id: deny-licenses
+        env:
+          FORBIDDEN_LICENSES: ${{ inputs.forbidden-licenses }}
+        run: |
+          # forbidden-licenses is semicolon-separated for the license check;
+          # the action takes a comma-separated list and rejected the whole
+          # string as one invalid license. The deprecated bare IDs (GPL-2.0
+          # and the like) are dropped, because their -only and -or-later
+          # forms are already listed.
+          list="$(printf '%s' "${FORBIDDEN_LICENSES}" | awk -v RS=';' '{ gsub(/^[ \t\n]+|[ \t\n]+$/, ""); if ($0 != "" && $0 !~ /^A?GPL-[0-9]\.0$/) printf "%s%s", (n++ ? "," : ""), $0 }')"
+          echo "list=${list}" >> "$GITHUB_OUTPUT"
+
       - name: Review Dependency Changes
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
           vulnerability-check: true
-          deny-licenses: ${{ inputs.forbidden-licenses }}
+          deny-licenses: ${{ steps.deny-licenses.outputs.list }}
 
   static-analysis:
     name: "Static Analysis"
