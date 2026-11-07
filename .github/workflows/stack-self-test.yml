@@ -180,4 +180,6 @@ jobs:
       service-path: starter-templates/nodejs-api
       typecheck-command: ""
       unit-test-command: npm run test:cov
-      enable-dependency-review: ${{ github.event_name == 'pull_request' }}
+      # Dependency review needs the repository's Dependency graph setting,
+      # which is off here. Consumer repositories that run it need it on.
+      enable-dependency-review: false
