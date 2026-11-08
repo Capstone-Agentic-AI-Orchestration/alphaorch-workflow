@@ -36,4 +36,4 @@ jobs:
     with:
       working-directory: ${{ inputs.service_path || '.' }}
       system-name: ${{ inputs.service_name || 'app' }}
-      node-version: ${{ inputs.node_version || 24 }}
+      node-version: ${{ fromJSON(format('{0}', inputs.node_version || 24)) }}
