@@ -13,7 +13,7 @@ Runs the reusable unit-test, lint, audit, license, and build workflows against r
 - Outputs: none
 
 ## Usage
-Runs inside `alphaorch-workflow` on pull requests that touch workflows, actions, fixtures, or starters, and by hand. It is not a consumer workflow template.
+Runs inside `alphaorch-workflow` on every pull request, and by hand. `main` requires its `Stack Self-Test Result` check. It is not a consumer workflow template.
 
 ## Fixtures
 
