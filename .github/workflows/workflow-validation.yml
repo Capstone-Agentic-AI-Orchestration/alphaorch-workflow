@@ -2,16 +2,9 @@
 name: "Workflow Validation"
 
 on:
+  # Every pull request: main is protected on this workflow's result, and a
+  # required check that a path filter skips would block the merge forever.
   pull_request:
-    paths:
-      - ".github/workflows/**"
-      - "catalog/**"
-      - "starter-templates/**"
-      - "workflow-templates/**"
-      - "scripts/**"
-      - "docs/workflows/**"
-      - ".claude/**"
-      - "CLAUDE.md"
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -815,3 +808,21 @@ jobs:
           if (failed) process.exit(1);
           console.log('Catalog resolves against this repository.');
           NODE
+
+  # The one check branch protection requires: every job above passed.
+  result:
+    name: "Workflow Validation Result"
+    if: ${{ always() }}
+    needs: [actionlint, validate-workflow-contracts, validate-eslint-matcher, validate-dotnet-trx-summary, validate-stack-catalog, validate-granular-templates, validate-catalog-and-starters, validate-no-legacy-granular-deps, validate-runtime-policy, smoke-test-template-shapes, validate-backend-contract]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::A job failed or was cancelled."
+            exit 1
+          fi

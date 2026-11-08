@@ -11,12 +11,9 @@ name: "Stack Self-Test"
 # tests/fixtures/dotnet is a minimal C# solution with an xUnit test project.
 
 on:
+  # Every pull request: main is protected on this workflow's result, and a
+  # required check that a path filter skips would block the merge forever.
   pull_request:
-    paths:
-      - ".github/workflows/**"
-      - ".github/actions/**"
-      - "tests/fixtures/**"
-      - "starter-templates/**"
   workflow_dispatch:
 
 permissions:
@@ -183,3 +180,21 @@ jobs:
       # Dependency review needs the repository's Dependency graph setting,
       # which is off here. Consumer repositories that run it need it on.
       enable-dependency-review: false
+
+  # The one check branch protection requires: every job above passed.
+  result:
+    name: "Stack Self-Test Result"
+    if: ${{ always() }}
+    needs: [backend-unit-tests, frontend-unit-tests, lint, audit, frontend-build, dotnet-unit-tests, dotnet-format, dotnet-analyze, dotnet-audit, dotnet-license-scan, customer-discovery, customer-node-pipeline]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::A job failed or was cancelled."
+            exit 1
+          fi
