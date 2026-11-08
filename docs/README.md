@@ -52,11 +52,6 @@ Vercel:
 - Org ID: Team Settings -> General -> Team ID
 - Project ID: Project Settings -> General -> Project ID
 
-SonarCloud:
-- Token: My Account -> Security -> Generate Token
-- Organization key: Organization Settings
-- Project key: Project Information / Project Settings
-
 Grafana Cloud k6:
 - Cloud token: k6 Cloud -> Project Settings -> API tokens
 - Project ID: k6 Cloud project details page

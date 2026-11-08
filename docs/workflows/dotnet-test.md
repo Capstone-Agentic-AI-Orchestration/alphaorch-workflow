@@ -25,9 +25,7 @@ Coverage is collected with `--collect:"XPlat Code Coverage"`, which requires a `
 `dotnet test` writes one report per test project into its own GUID-named directory. The workflow merges all of them with ReportGenerator into:
 
 - `coverage/coverage.cobertura.xml` — read by the `coverage-gate` action with `format: cobertura`
-- `coverage/lcov.info` — the path `sonarcloud-scan.yml` expects
+- `coverage/lcov.info` — the same merged coverage in lcov format
 
 Merging rather than reading the first report is deliberate: a solution with separate unit and integration test projects would otherwise be graded on whichever one the filesystem happened to list first.
 
-## Known limitation
-`sonarcloud-scan.yml` runs the generic SonarScanner CLI. That scanner does not analyse C#, which requires the SonarScanner for .NET (`dotnet sonarscanner begin/end`) wrapped around the build. The lcov report this workflow produces is therefore usable for coverage reporting but does not by itself give a .NET project SonarCloud code analysis. A `sonarcloud-dotnet-scan.yml` is the separate piece of work that closes it.

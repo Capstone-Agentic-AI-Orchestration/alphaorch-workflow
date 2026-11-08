@@ -97,7 +97,7 @@
                     {
                         "id":  "frontend-checks",
                         "label":  "Frontend Checks",
-                        "description":  "Solo Basic frontend checks without SonarCloud or hosted deployment.",
+                        "description":  "Solo Basic frontend checks without hosted deployment.",
                         "supportedProjectTypes":  [
                                                       "nextjs-app",
                                                       "react-spa"
@@ -129,7 +129,7 @@
                     {
                         "id":  "backend-checks",
                         "label":  "Backend Checks",
-                        "description":  "Solo Basic backend checks without SonarCloud or hosted deployment.",
+                        "description":  "Solo Basic backend checks without hosted deployment.",
                         "supportedProjectTypes":  [
                                                       "nestjs-api",
                                                       "nodejs-api"
@@ -161,7 +161,7 @@
                     {
                         "id":  "frontend-code-quality",
                         "label":  "Frontend Code Quality",
-                        "description":  "Solo Plus frontend pipeline: checks plus SonarCloud quality gate and Vercel deployment.",
+                        "description":  "Solo Plus frontend pipeline: checks plus Vercel deployment.",
                         "supportedProjectTypes":  [
                                                       "nextjs-app",
                                                       "react-spa"
@@ -251,7 +251,7 @@
                     {
                         "id":  "backend-code-quality",
                         "label":  "Backend Code Quality",
-                        "description":  "Solo Plus backend pipeline: checks plus SonarCloud quality gate and Render deployment.",
+                        "description":  "Solo Plus backend pipeline: checks plus Render deployment.",
                         "supportedProjectTypes":  [
                                                       "nestjs-api",
                                                       "nodejs-api"

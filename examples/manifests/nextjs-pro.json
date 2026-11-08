@@ -22,7 +22,6 @@
     "advanced": {
       "playwright": true,
       "k6": true,
-      "sonarcloud": false,
       "docker": false,
       "autoPromotion": true,
       "productionGate": false

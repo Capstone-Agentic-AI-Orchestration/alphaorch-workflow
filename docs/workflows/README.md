@@ -37,7 +37,6 @@ Customer catalog files live under `catalog/customer/`:
 | [dotnet-analyze.yml](dotnet-analyze.md) | quality | Build a .NET solution with analyzers enabled and warnings escalated. |
 | [dotnet-format.yml](dotnet-format.md) | quality | Verify C# formatting and style with dotnet format. |
 | [dotnet-audit.yml](dotnet-audit.md) | security | Audit NuGet dependencies against known advisories. |
-| [sonarcloud-dotnet-scan.yml](sonarcloud-dotnet-scan.md) | quality | Analyse C# with SonarScanner for .NET. |
 | [gitleaks-scan.yml](gitleaks-scan.md) | security | Scan for committed secrets with Gitleaks, redacted. |
 | [dotnet-license-scan.yml](dotnet-license-scan.md) | governance | Inventory NuGet licences and fail on forbidden terms. |
 | [dotnet-sbom.yml](dotnet-sbom.md) | governance | Export a CycloneDX SBOM as the release record. |
@@ -50,6 +49,7 @@ Customer catalog files live under `catalog/customer/`:
 | [vercel-deploy.yml](vercel-deploy.md) | deploy | Build and deploy a frontend to Vercel (preview or production). |
 | [post-deploy-verify.yml](post-deploy-verify.md) | verify | Check a deployed URL answers 2xx after the hosting platform deployed it. |
 | [workflow-validation.yml](workflow-validation.md) | maintenance | Validate workflow shape, contracts, catalogs, and templates. |
+| [stack-self-test.yml](stack-self-test.md) | maintenance | Run the unit-test, lint, audit, and build workflows against real projects for every stack. |
 
 ## Customer templates
 

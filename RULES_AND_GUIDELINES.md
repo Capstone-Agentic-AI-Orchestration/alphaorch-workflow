@@ -75,7 +75,7 @@ You do not need access to central workflow internals. Follow these rules through
 - Include `backend_stack` per system in backend systems JSON.
 	- Allowed values: `nestjs`, `nodejs`
 	- Legacy repos without `backend_stack` default to `nestjs`
-- Configure required secrets for Sonar and promotion PR automation.
+- Configure required secrets for promotion PR automation.
 
 ### 3.2 Code and Test Requirements
 
@@ -91,7 +91,7 @@ You do not need access to central workflow internals. Follow these rules through
 
 ### 3.3 Promotion Gate Requirements
 
-- Security scan and Sonar quality gate must pass.
+- Security scan (dependency audit and license check) must pass.
 - k6 performance checks must pass on enforced branches (`test`, `uat`).
 - If container release path is enabled for your service, Docker build and image security checks must pass.
 

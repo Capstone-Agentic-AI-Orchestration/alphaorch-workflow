@@ -21,7 +21,7 @@ on:
       test-command:
         required: false
         type: string
-        default: "npm run test -- --coverage --coverageReporters=json-summary tests/unit"
+        default: "npm run test -- tests/unit --coverage --coverageReporters=json-summary"
         description: "Test command to execute"
       unit-tests-directory:
         required: false

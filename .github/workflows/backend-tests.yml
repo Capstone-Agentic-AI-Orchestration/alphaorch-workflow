@@ -104,7 +104,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json') != '' && 'npm' || '' }}
-          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Install Dependencies
         run: |
@@ -211,7 +211,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json') != '' && 'npm' || '' }}
-          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Install Dependencies
         run: |
