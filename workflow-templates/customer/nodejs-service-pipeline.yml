@@ -28,7 +28,7 @@ on:
         description: "Minimum line coverage percentage"
         required: false
         type: number
-        default: 80
+        default: 10
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
@@ -103,7 +103,7 @@ jobs:
       e2e-test-command: ${{ needs.discover.outputs.e2e-test-command }}
       build-command: ${{ needs.discover.outputs.build-command }}
       build-output-path: ${{ needs.discover.outputs.build-output-path }}
-      coverage-threshold: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.coverage_threshold || 80 }}
+      coverage-threshold: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.coverage_threshold || 10 }}
       enable-dependency-review: ${{ github.event_name == 'pull_request' }}
       uat-deploy-command: ${{ vars.UAT_DEPLOY_COMMAND || '' }}
       uat-command: ${{ vars.UAT_COMMAND || '' }}

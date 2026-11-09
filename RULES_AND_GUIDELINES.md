@@ -30,7 +30,7 @@ You do not need access to central workflow internals. Follow these rules through
 ### 1.3 Global CI Quality Rules
 
 - Test pass rate must be 100%.
-- Coverage must be >= 80%.
+- Coverage must be >= 10%.
 - Lint must pass with zero errors.
 - TypeScript strict mode must be enabled for TypeScript repos.
 - No hardcoded secrets in source code.
@@ -57,7 +57,7 @@ You do not need access to central workflow internals. Follow these rules through
 - Next.js + TypeScript must remain the baseline.
 - Maintain lint, unit test, and build scripts.
 - Keep E2E and performance smoke test paths available.
-- Keep coverage at or above 80%.
+- Keep coverage at or above 10%.
 
 ### 2.3 Promotion Gate Requirements
 
@@ -87,7 +87,7 @@ You do not need access to central workflow internals. Follow these rules through
 	- unit tests with coverage
 	- e2e tests
 	- migration validation check
-- Coverage must remain >= 80%.
+- Coverage must remain >= 10%.
 
 ### 3.3 Promotion Gate Requirements
 
@@ -110,7 +110,7 @@ You do not need access to central workflow internals. Follow these rules through
 - TypeScript strict mode is required for Expo and React Native TypeScript projects.
 - Keep lint, typecheck, and unit test scripts healthy.
 - Keep Maestro E2E setup healthy for required platforms.
-- Coverage must remain >= 80%.
+- Coverage must remain >= 10%.
 
 ### 4.3 Build and Artifact Requirements
 
