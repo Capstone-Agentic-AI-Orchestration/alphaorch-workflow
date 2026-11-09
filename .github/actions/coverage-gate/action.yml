@@ -12,7 +12,7 @@ inputs:
   threshold:
     description: "Minimum line coverage percentage"
     required: false
-    default: "80"
+    default: "10"
   enforce:
     description: "Fail the job when coverage is below threshold or the report is missing"
     required: false

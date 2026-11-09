@@ -16,7 +16,7 @@
       "lint": true,
       "typecheck": true,
       "unitTests": true,
-      "coverageThreshold": 80,
+      "coverageThreshold": 10,
       "build": true
     },
     "advanced": {

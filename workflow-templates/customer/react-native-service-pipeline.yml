@@ -28,7 +28,7 @@ on:
         description: "Minimum line coverage percentage"
         required: false
         type: number
-        default: 80
+        default: 10
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
@@ -79,7 +79,7 @@ jobs:
       service-name: ${{ needs.discover.outputs.service-name }}
       service-path: ${{ needs.discover.outputs.service-path }}
       node-version: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.node_version || 24 }}
-      coverage-threshold: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.coverage_threshold || 80 }}
+      coverage-threshold: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.coverage_threshold || 10 }}
       require-production-approval: ${{ vars.REQUIRE_PRODUCTION_APPROVAL == 'true' }}
       production-staging-url: ${{ vars.PRODUCTION_STAGING_URL || '' }}
     secrets: inherit

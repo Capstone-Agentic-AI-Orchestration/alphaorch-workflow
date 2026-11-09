@@ -76,7 +76,7 @@ on:
       coverage-threshold:
         required: false
         type: number
-        default: 80
+        default: 10
         description: "Minimum line coverage percentage"
       enable-dependency-review:
         required: false

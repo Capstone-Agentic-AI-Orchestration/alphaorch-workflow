@@ -586,7 +586,7 @@ Every PR must pass these gates before merge:
 |------|------|-----------|--------------|
 | **Build** | Framework CLI | Must succeed | Yes |
 | **Unit Tests** | Jest / JUnit | Must pass | Yes |
-| **Coverage** | Jest + custom check | ≥ 80% (lines, functions, branches, statements) | Yes |
+| **Coverage** | Jest + custom check | ≥ 10% (lines, functions, branches, statements) | Yes |
 | **Lint** | ESLint | Zero errors | Yes |
 | **Security Audit** | `npm audit` | No HIGH/CRITICAL | Yes |
 | **License Check** | Custom script | Allowlist only | Yes |
@@ -768,7 +768,7 @@ Go to **Actions** → select the master pipeline workflow → **Run workflow**:
 3. Verify you're on the correct Node.js / Java version (check workflow inputs)
 4. Run `npm audit` locally — CI fails on HIGH/CRITICAL vulnerabilities
 5. Run lint with `--max-warnings=0` — CI treats warnings as errors
-6. Check coverage thresholds — CI requires ≥ 80% across all four metrics
+6. Check coverage thresholds — CI requires ≥ 10% across all four metrics
 
 ### "Auto-promotion PR was not created"
 

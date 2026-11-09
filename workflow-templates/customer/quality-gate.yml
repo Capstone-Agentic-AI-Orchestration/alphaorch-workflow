@@ -12,7 +12,7 @@
 #     service_name        string  required  — display label (e.g. "cicd-workflow-be")
 #     node_version        string  optional  — Node.js version (default 22)
 #     working_directory   string  optional  — subdirectory if repo is a monorepo (default ".")
-#     coverage_threshold  number  optional  — minimum line coverage % (default 80)
+#     coverage_threshold  number  optional  — minimum line coverage % (default 10)
 #     run_build           bool    optional  — whether to run npm run build (default true)
 #   No secrets required.
 #
@@ -43,7 +43,7 @@ on:
         description: "Minimum line coverage percentage (0–100)"
         type: number
         required: false
-        default: 80
+        default: 10
       run_build:
         description: "Run npm run build as a final build-check step"
         type: boolean

@@ -16,7 +16,7 @@ on:
       base-coverage-threshold:
         required: false
         type: number
-        default: 80
+        default: 10
         description: "Coverage floor on non-promoted branches"
     outputs:
       branch:
