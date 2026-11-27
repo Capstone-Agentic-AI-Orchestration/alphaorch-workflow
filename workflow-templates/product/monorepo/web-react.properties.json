@@ -1,0 +1,16 @@
+{
+    "name": "Monorepo Web React (Alpha-hosted)",
+    "description": "The frontend app of an Alpha-hosted monorepo, in apps/web/. Same quality jobs as fe-react.yml with web- job ids. CI only: hosting deploys through the Vercel GitHub app.",
+    "categories": [
+        "frontend",
+        "react",
+        "ci",
+        "alpha-hosted",
+        "monorepo"
+    ],
+    "filePatterns": [
+        "apps/web/vite.config.ts",
+        "apps/web/vite.config.js",
+        "apps/web/package.json"
+    ]
+}

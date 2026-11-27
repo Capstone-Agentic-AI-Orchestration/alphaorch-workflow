@@ -1,0 +1,14 @@
+{
+    "name": "Monorepo API Node.js API (Alpha-hosted)",
+    "description": "The backend app of an Alpha-hosted monorepo, in apps/api/. Same quality jobs as be-nodejs.yml with api- job ids. CI only: hosting deploys through the Render GitHub app.",
+    "categories": [
+        "backend",
+        "nodejs",
+        "ci",
+        "alpha-hosted",
+        "monorepo"
+    ],
+    "filePatterns": [
+        "apps/api/package.json"
+    ]
+}

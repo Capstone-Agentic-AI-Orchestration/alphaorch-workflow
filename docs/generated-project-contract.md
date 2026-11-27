@@ -12,6 +12,12 @@ An **Alpha-hosted** repository (hosting set up by Alpha on Render or Vercel) get
 - `.github/workflows/post-deploy-verify.yml`, from `workflow-templates/product/post-deploy-verify.yml`.
 - `README.md` with setup instructions, and the stack's starter source.
 
+An **Alpha-hosted monorepo** (React frontend in `apps/web`, Node.js backend in `apps/api`) gets, instead of `ci.yml`:
+
+- `.github/workflows/ci-web.yml`, from `workflow-templates/product/monorepo/web-react.yml`.
+- `.github/workflows/ci-api.yml`, from `workflow-templates/product/monorepo/api-nodejs.yml`.
+- The same `post-deploy-verify.yml`.
+
 A **CI-deployed** repository gets the granular customer caller for its stack instead, copied from
 `workflow-templates/customer/` (for example `be-nestjs.yml` or `fe-nextjs.yml`), including its deploy
 job. It does not get a single `master-pipeline-*.yml` orchestrator, which no longer exists in this
