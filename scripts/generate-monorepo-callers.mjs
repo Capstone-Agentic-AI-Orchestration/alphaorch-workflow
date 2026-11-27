@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 // product caller; workflow-validation.yml fails when the committed copies differ.
 //
 //   node scripts/generate-monorepo-callers.mjs
-const root = process.argv[2] ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+//
+// Takes no arguments: it always reads and writes this repository's own templates.
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const product = path.join(root, 'workflow-templates', 'product');
 const out = path.join(product, 'monorepo');
 fs.mkdirSync(out, { recursive: true });
